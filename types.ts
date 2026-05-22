@@ -47,10 +47,18 @@ export interface TrackingInfo {
 
 // Database Entities
 export interface PricingItem {
-  id?: number; 
+  id?: number;
   city: string;
-  domicile: number;
-  stop: number;
+  zone: number;
+  silver_domicile: number;
+  silver_stop: number;
+  gold_domicile: number;
+  gold_stop: number;
+  platinum_domicile: number;
+  platinum_stop: number;
+  // Legacy aliases for backwards compat
+  domicile?: number;
+  stop?: number;
 }
 
 export interface DeskStation {
