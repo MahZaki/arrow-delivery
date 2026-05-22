@@ -1,7 +1,7 @@
 
 import { PricingItem, DeskItem, DeskStation } from './types';
 
-export const API_URL = 'https://imir.ecotrack.dz';
+export const API_URL = 'https://arrow.ecotrack.dz';
 export const API_TOKEN = 'qyW7zYNUhC5ssqT6VNpfSMOSlFkwzYaNVA02rha2sPPtpasV9KiRgO1qw52D';
 
 // Tracking numbers for archived orders that are excluded from the main list API.
