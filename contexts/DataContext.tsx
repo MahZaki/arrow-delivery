@@ -37,11 +37,16 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [pricing, setPricing] = useState<PricingItem[]>([]);
-  const [desks, setDesks] = useState<DeskItem[]>([]);
-  const [flatStations, setFlatStations] = useState<DeskStation[]>([]);
+  // Initialise directly from static data — instant, no network wait
+  const [pricing, setPricing] = useState<PricingItem[]>(PRICING_DATA);
+  const [desks, setDesks] = useState<DeskItem[]>(DESK_DATA);
+  const [flatStations, setFlatStations] = useState<DeskStation[]>(() => {
+    const flat: DeskStation[] = [];
+    DESK_DATA.forEach(d => d.stations.forEach(s => flat.push(s)));
+    return flat;
+  });
   const [users, setUsers] = useState<UserProfile[]>([]);
-  const [loadingData, setLoadingData] = useState(true);
+  const [loadingData, setLoadingData] = useState(false);
 
   const organizeDesks = (stations: DeskStation[]): DeskItem[] => {
     const map = new Map<string, DeskStation[]>();
@@ -58,48 +63,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const refreshData = async () => {
-    setLoadingData(true);
-    try {
-      // Fetch Pricing
-      const { data: pricingData, error: pricingError } = await supabase.from('pricing').select('*').order('city');
-      
-      if (pricingError) {
-        console.error("Pricing fetch error:", pricingError);
-      }
-
-      if (pricingData && pricingData.length > 0) {
-          setPricing(pricingData);
-      } else {
-          // Fallback to static constants if DB is empty
-          console.log("DB empty or inaccessible, using static pricing data");
-          setPricing(PRICING_DATA);
-      }
-
-      // Fetch Stations
-      const { data: stationsData, error: stationsError } = await supabase.from('stations').select('*').order('wilaya');
-      
-      if (stationsError) {
-        console.error("Stations fetch error:", stationsError);
-      }
-
-      if (stationsData && stationsData.length > 0) {
-        setFlatStations(stationsData);
-        setDesks(organizeDesks(stationsData));
-      } else {
-        // Fallback to static constants if DB is empty
-        console.log("DB empty or inaccessible, using static desk data");
-        setDesks(DESK_DATA);
-        // Flatten DESK_DATA for internal consistency if needed
-        const flat: DeskStation[] = [];
-        DESK_DATA.forEach(d => d.stations.forEach(s => flat.push(s)));
-        setFlatStations(flat);
-      }
-
-    } catch (e) {
-      console.error("Error loading data", e);
-    } finally {
-      setLoadingData(false);
-    }
+    // Pricing & desks are static — always use local data immediately.
+    // This function is kept for admin DB operations compatibility.
+    setPricing(PRICING_DATA);
+    setDesks(DESK_DATA);
+    const flat: DeskStation[] = [];
+    DESK_DATA.forEach(d => d.stations.forEach(s => flat.push(s)));
+    setFlatStations(flat);
   };
 
   const refreshUsers = async () => {
