@@ -6,13 +6,14 @@ import { TrackingInfo } from '../types';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatusBadge from '../components/StatusBadge';
 import { STATUS_TRANSLATIONS, WILAYAS } from '../constants';
+import { useAuth } from '../contexts/AuthContext';
 
 const Tracking: React.FC = () => {
   const [trackingNumber, setTrackingNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<TrackingInfo | null>(null);
-  
+  const { user } = useAuth();
   const location = useLocation();
 
   useEffect(() => {
@@ -33,7 +34,9 @@ const Tracking: React.FC = () => {
     setData(null);
 
     try {
-      const result = await trackOrder(number);
+      // Use user's own token if available, otherwise use the master token
+      const token = user?.api_token || undefined;
+      const result = await trackOrder(number, token);
       if (!result.success && result.message) {
           setError(result.message === 'Commande inexistante' ? 'Order not found. Please verify the tracking number.' : result.message);
       } else if (result.activity && result.activity.length > 0) {
