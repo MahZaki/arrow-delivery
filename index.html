@@ -2,89 +2,35 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="https://vitejs.dev/logo.svg" />
+    <link rel="icon" type="image/svg+xml" href="/arrow-icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Arrow Delivery - Fast, reliable delivery tracking and management platform." />
     <title>Arrow Delivery</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              arrow: {
-                black: '#0B0B0B',
-                dark: '#1A1A1A',
-                green: '#2FBF8E',
-                deepGreen: '#1E6F4A',
-                light: '#E6E6E6',
-                gray: '#9CA3AF'
-              }
-            },
-            fontFamily: {
-              sans: ['Segoe UI', 'Tahoma', 'Geneva', 'Verdana', 'sans-serif'],
-            },
-            animation: {
-              'shoot': 'shoot 3s linear infinite',
-              'fade-in': 'fadeIn 0.5s ease-out forwards',
-              'slide-up': 'slideUp 0.5s ease-out forwards',
-              'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            },
-            keyframes: {
-              shoot: {
-                '0%': { transform: 'translateY(0) translateX(0) rotate(45deg)', opacity: '0' },
-                '10%': { opacity: '0.6' },
-                '90%': { opacity: '0.6' },
-                '100%': { transform: 'translateY(-120vh) translateX(100vw) rotate(45deg)', opacity: '0' },
-              },
-              fadeIn: {
-                '0%': { opacity: '0' },
-                '100%': { opacity: '1' },
-              },
-              slideUp: {
-                '0%': { transform: 'translateY(20px)', opacity: '0' },
-                '100%': { transform: 'translateY(0)', opacity: '1' },
-              }
-            }
-          }
-        }
-      }
-    </script>
     <style>
       body {
         background-color: #0B0B0B;
         color: #E6E6E6;
+        margin: 0;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       }
       /* Custom scrollbar for the Arrow aesthetic */
       ::-webkit-scrollbar {
         width: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: #0B0B0B; 
+        background: #0B0B0B;
       }
       ::-webkit-scrollbar-thumb {
-        background: #1E6F4A; 
+        background: #1E6F4A;
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #2FBF8E; 
+        background: #2FBF8E;
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react-router-dom": "https://esm.sh/react-router-dom@^7.12.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.90.1"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
-</head>
+  </head>
   <body>
     <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>
