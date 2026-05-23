@@ -10,6 +10,7 @@ import Login from './pages/Login';
 import Admin from './pages/Admin';
 import AdminLogin from './pages/AdminLogin';
 import ArchivedImport from './pages/ArchivedImport';
+import Finance from './pages/Finance';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
 import { DataProvider } from './contexts/DataContext';
@@ -32,6 +33,7 @@ const App: React.FC = () => {
                 <Route element={<ProtectedRoute />}>
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/archive" element={<ArchivedImport />} />
+                  <Route path="/finance" element={<Finance />} />
                   <Route path="/admin" element={<Admin />} />
                 </Route>
               </Routes>

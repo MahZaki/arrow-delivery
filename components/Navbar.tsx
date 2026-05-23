@@ -58,6 +58,9 @@ const Navbar: React.FC = () => {
                   <NavLink to="/dashboard" className={linkClasses}>
                      <LayoutDashboard size={18} /> Dashboard
                   </NavLink>
+                  <NavLink to="/finance" className={linkClasses}>
+                     <DollarSign size={18} /> Finance
+                  </NavLink>
                   <button onClick={handleLogout} className={buttonClasses}>
                      <LogOut size={18} /> Logout
                   </button>
@@ -100,6 +103,9 @@ const Navbar: React.FC = () => {
               <>
                 <NavLink to="/dashboard" onClick={() => setIsOpen(false)} className={linkClasses}>
                    <LayoutDashboard size={18} /> Dashboard
+                </NavLink>
+                <NavLink to="/finance" onClick={() => setIsOpen(false)} className={linkClasses}>
+                   <DollarSign size={18} /> Finance
                 </NavLink>
                 <button onClick={handleLogout} className={`w-full ${buttonClasses} text-left`}>
                    <LogOut size={18} /> Logout
