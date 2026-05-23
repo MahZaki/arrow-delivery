@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowRight, AlertTriangle, Mail, Lock, UserPlus, Key, CheckCircle } from 'lucide-react';
@@ -11,7 +11,8 @@ const Login: React.FC = () => {
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Post-login API token state
+  // Token step — only shown when no token is saved in DB yet
+  const [waitingForProfile, setWaitingForProfile] = useState(false);
   const [showTokenStep, setShowTokenStep] = useState(false);
   const [apiToken, setApiToken] = useState('');
   const [isSavingToken, setIsSavingToken] = useState(false);
@@ -19,6 +20,20 @@ const Login: React.FC = () => {
 
   const navigate = useNavigate();
   const { login, signup, updateApiToken, user } = useAuth();
+
+  // After login, AuthContext fetches the profile (including api_token) async.
+  // Watch `user` — once it's populated, decide: go to dashboard or show token step.
+  useEffect(() => {
+    if (!waitingForProfile || !user) return;
+    setWaitingForProfile(false);
+    if (user.api_token) {
+      // Token already saved — skip token step and go straight to dashboard
+      navigate('/dashboard');
+    } else {
+      // First login or token not yet set — ask for it once
+      setShowTokenStep(true);
+    }
+  }, [user, waitingForProfile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,8 +47,8 @@ const Login: React.FC = () => {
       if (isLoginView) {
         const { success, error: authError } = await login(email.trim(), password.trim());
         if (success) {
-          // Show token step — user will be set by AuthContext, we check after
-          setShowTokenStep(true);
+          // Signal the useEffect to watch `user` once profile loads
+          setWaitingForProfile(true);
         } else {
           setError(authError || 'Invalid credentials.');
         }
@@ -80,9 +95,10 @@ const Login: React.FC = () => {
     setEmail('');
     setPassword('');
     setShowTokenStep(false);
+    setWaitingForProfile(false);
   };
 
-  // ── Step 2: API Token Entry ──
+  // ── Step 2: API Token Entry (only shown on first login / token missing) ──
   if (showTokenStep) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 bg-arrow-black relative overflow-hidden">
@@ -97,7 +113,7 @@ const Login: React.FC = () => {
             <h2 className="text-2xl font-bold text-white">Connect Your Account</h2>
             <p className="text-arrow-gray text-sm mt-2">
               Enter your <span className="text-arrow-green font-semibold">Ecotrack API token</span> to sync your orders.
-              <br />You can find it in your Ecotrack dashboard settings.
+              <br />You only need to do this once — it's saved securely.
             </p>
           </div>
 
@@ -211,13 +227,22 @@ const Login: React.FC = () => {
             </div>
           )}
 
+          {/* Loading indicator while profile is being fetched */}
+          {waitingForProfile && (
+            <div className="text-center text-arrow-gray text-sm py-2 animate-pulse">
+              Loading your profile...
+            </div>
+          )}
+
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || waitingForProfile}
             className="w-full bg-gradient-to-r from-arrow-green to-arrow-deepGreen hover:from-emerald-400 hover:to-emerald-600 text-black font-extrabold py-4 rounded-xl transition-all transform hover:scale-[1.02] shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-lg"
           >
             {isSubmitting
               ? (isLoginView ? 'Logging in...' : 'Creating Account...')
+              : waitingForProfile
+              ? 'Loading...'
               : (isLoginView ? <>Login <ArrowRight size={22} /></> : <>Sign Up <UserPlus size={22} /></>)
             }
           </button>
