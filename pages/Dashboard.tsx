@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchOrdersFromApi, clearCache } from '../services/api';
+import { fetchOrdersFromApi, fetchArchivedFromDb, autoArchiveDisappeared, clearCache } from '../services/api';
 import { Order } from '../types';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatusBadge from '../components/StatusBadge';
@@ -8,7 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import AdminDashboardView from '../components/AdminDashboardView';
 import { 
     Package, Truck, CheckCircle, RefreshCw, Search, 
-    MapPin, PauseCircle, CloudUpload, 
+    MapPin, PauseCircle, CloudUpload, Archive,
     RotateCcw, Plus, ChevronDown, Home, Filter, Calendar, FilePlus, Layers, List
 } from 'lucide-react';
 import { WILAYAS } from '../constants';
@@ -66,14 +66,26 @@ const Dashboard: React.FC = () => {
     }
   }, [user]);
 
-  // Always fetch live from the Ecotrack API — no Supabase cache
-  const initDashboard = async (_userId: string, token: string) => {
+  // Load: live active orders from API + archived from Supabase, merged
+  const initDashboard = async (userId: string, token: string) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchOrdersFromApi(token);
-      setOrders(data);
+      // Fetch both sources in parallel
+      const [liveOrders, archivedOrders] = await Promise.all([
+        fetchOrdersFromApi(token),
+        fetchArchivedFromDb(userId),
+      ]);
+
+      // Merge: live orders take priority (fresher), archived fill in the rest
+      const liveSet = new Set(liveOrders.map(o => o.tracking));
+      const uniqueArchived = archivedOrders.filter(o => !liveSet.has(o.tracking));
+      setOrders([...liveOrders, ...uniqueArchived]);
       setLastSync(new Date().toISOString());
+
+      // Background: detect disappeared orders → auto-archive (non-blocking)
+      autoArchiveDisappeared(liveOrders, token, userId).catch(console.warn);
+
     } catch (err: any) {
       console.error(err);
       setError(`Failed to load orders: ${err.message}`);
@@ -82,18 +94,24 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // Force-refresh: clear in-memory cache then re-fetch live
+  // Manual refresh: clear cache, re-fetch both sources
   const handleForceUpdate = async () => {
     if (!user?.api_token || !user?.id) return;
     setSyncing(true);
     setError(null);
     try {
       clearCache();
-      const data = await fetchOrdersFromApi(user.api_token);
-      setOrders(data);
+      const [liveOrders, archivedOrders] = await Promise.all([
+        fetchOrdersFromApi(user.api_token),
+        fetchArchivedFromDb(user.id),
+      ]);
+      const liveSet = new Set(liveOrders.map(o => o.tracking));
+      const uniqueArchived = archivedOrders.filter(o => !liveSet.has(o.tracking));
+      setOrders([...liveOrders, ...uniqueArchived]);
       setLastSync(new Date().toISOString());
+      // Background auto-archive
+      autoArchiveDisappeared(liveOrders, user.api_token, user.id).catch(console.warn);
     } catch (err: any) {
-      console.error('Refresh error:', err);
       setError(`Refresh failed: ${err.message || 'Connection error.'}`);
     } finally {
       setSyncing(false);
@@ -263,6 +281,14 @@ const Dashboard: React.FC = () => {
               </h1>
               <div className="flex items-center gap-4">
                   {lastSync && <span className="text-xs text-gray-500 hidden md:block">Last synced: {new Date(lastSync).toLocaleString()}</span>}
+                  <button
+                      onClick={() => navigate('/archive')}
+                      className="bg-neutral-900 hover:bg-neutral-800 text-gray-300 border border-gray-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all"
+                      title="Manage archived orders"
+                  >
+                      <Archive size={16} />
+                      Archive
+                  </button>
                   <button 
                       onClick={handleForceUpdate} 
                       disabled={syncing}
