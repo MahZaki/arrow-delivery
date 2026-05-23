@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchOrdersFromDb, syncOrdersToDb, getLastSyncTime } from '../services/api';
+import { fetchOrdersFromApi, clearCache } from '../services/api';
 import { Order } from '../types';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatusBadge from '../components/StatusBadge';
@@ -66,38 +66,37 @@ const Dashboard: React.FC = () => {
     }
   }, [user]);
 
-  const initDashboard = async (userId: string, token: string) => {
-      setLoading(true);
-      await loadOrdersFromDb();
-      const lastSyncTime = await getLastSyncTime(userId);
-      setLastSync(lastSyncTime);
-      setLoading(false);
-  };
-
-  const loadOrdersFromDb = async () => {
+  // Always fetch live from the Ecotrack API — no Supabase cache
+  const initDashboard = async (_userId: string, token: string) => {
+    setLoading(true);
     setError(null);
     try {
-      const data = await fetchOrdersFromDb();
+      const data = await fetchOrdersFromApi(token);
       setOrders(data);
+      setLastSync(new Date().toISOString());
     } catch (err: any) {
       console.error(err);
-      setError('Failed to load orders from database.');
+      setError(`Failed to load orders: ${err.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Force-refresh: clear in-memory cache then re-fetch live
   const handleForceUpdate = async () => {
     if (!user?.api_token || !user?.id) return;
     setSyncing(true);
-    
+    setError(null);
     try {
-        await syncOrdersToDb(user.api_token, user.id);
-        await loadOrdersFromDb();
-        setLastSync(new Date().toISOString());
+      clearCache();
+      const data = await fetchOrdersFromApi(user.api_token);
+      setOrders(data);
+      setLastSync(new Date().toISOString());
     } catch (err: any) {
-        console.error("Sync error:", err);
-        setError(`Sync failed: ${err.message || 'Connection error.'}`);
+      console.error('Refresh error:', err);
+      setError(`Refresh failed: ${err.message || 'Connection error.'}`);
     } finally {
-        setSyncing(false);
+      setSyncing(false);
     }
   };
 
@@ -113,41 +112,54 @@ const Dashboard: React.FC = () => {
       }
   };
 
-  // --- Strict Mapping Logic for Status Bar ---
-  const normalize = (str: string) => str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
+  // --- Category mapping using EXACT Ecotrack API status strings ---
+  // Source: /api/v1/get/orders status field values
+  const CATEGORY_MAP: Record<string, string> = {
+    // Prêt à expédier
+    'prete_a_expedier':        'prete_a_expedier',
+    // En ramassage
+    'en_ramassage':            'en_ramassage',
+    // En préparation stock
+    'en_preparation_stock':    'en_preparation',
+    // Vers hub
+    'vers_hub':                'vers_station',
+    // En hub (station)
+    'en_hub':                  'en_station',
+    // Vers wilaya
+    'vers_wilaya':             'vers_wilaya',
+    // En préparation (at local station)
+    'en_preparation':          'en_station',
+    // En livraison
+    'en_livraison':            'en_livraison',
+    // Suspendu
+    'suspendu':                'suspendus',
+    // Livré non encaissé
+    'livre_non_encaisse':      'livres',
+    // Encaissé non payé
+    'encaisse_non_paye':       'livres',
+    // Paiements prêts
+    'paiements_prets':         'livres',
+    // Payé et archivé
+    'paye_et_archive':         'livres',
+    // Retours
+    'retour_chez_livreur':     'retours',
+    'retour_transit_entrepot': 'retours',
+    'retour_en_traitement':    'retours',
+    'retour_recu':             'retours',
+    'retour_archive':          'retours',
+    // Annulé
+    'annule':                  'retours',
+  };
 
   const getCategory = (status: string): string => {
-      const st = normalize(status);
-      
-      // 1. Retours (Strict priority for anything return related)
-      if (['retour', 'annule', 'return', 'chez_livreur', 'transit_entrepot'].some(k => st.includes(k))) return 'retours';
-      
-      // 2. Livrés (Final states)
-      if (['livre', 'paye', 'encaisse', 'delivered'].some(k => st.includes(k))) return 'livres';
-      
-      // 3. Suspendus
-      if (['suspendu', 'reporte'].some(k => st.includes(k))) return 'suspendus';
-      
-      // 4. En Livraison (Out for delivery)
-      if (['dispatched', 'attempt', 'en_livraison', 'livraison'].some(k => st.includes(k))) return 'en_livraison';
-      
-      // 5. En Preparation (Stock processing)
-      if (['preparation', 'stock'].some(k => st.includes(k))) return 'en_preparation';
-      
-      // 6. Vers Wilaya (In transit between hubs)
-      if (['vers_wilaya', 'road'].some(k => st.includes(k))) return 'vers_wilaya';
-      
-      // 7. En Station (Arrived at local hub)
-      if (['en_hub', 'accepted_by_carrier'].some(k => st.includes(k))) return 'en_station';
-      
-      // 8. Vers Station (Transfer to hub)
-      if (['vers_hub', 'transfer'].some(k => st.includes(k))) return 'vers_station';
-      
-      // 9. En Ramassage (Picked up, not at hub yet)
-      if (['ramassage', 'picked'].some(k => st.includes(k))) return 'en_ramassage';
-      
-      // 10. Prêt à expédier (Created)
-      return 'prete_a_expedier';
+    if (!status) return 'prete_a_expedier';
+    // Normalize: strip accents, lowercase, trim
+    const normalized = status
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+    return CATEGORY_MAP[normalized] ?? 'prete_a_expedier';
   };
 
   // Filtering
