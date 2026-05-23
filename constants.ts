@@ -44,50 +44,60 @@ export const ARCHIVED_TRACKING_NUMBERS = [
   'ECVJDJ260110306649'
 ];
 
+// ─── STATUS TRANSLATIONS ──────────────────────────────────────────────────────
+// Source: Ecotrack API — "Filtre des commandes par status" & "Suivi et historique"
+// These are the EXACT status strings returned by the API. Do not rename keys.
 export const STATUS_TRANSLATIONS: Record<string, string> = {
+
+  // ── Order lifecycle (returned by /api/v1/get/orders & /api/v1/get/orders/status) ──
+  'prete_a_expedier':       'Ready to Ship',          // ✅ confirmed correct
+  'en_ramassage':           'Being Collected',
+  'en_preparation_stock':   'Stock Preparation',
+  'vers_hub':               'To Hub',
+  'en_hub':                 'At Hub',
+  'vers_wilaya':            'To Destination',
+  'en_preparation':         'In Preparation',
+  'en_livraison':           'Out for Delivery',
+  'suspendu':               'Suspended',
+  'livre_non_encaisse':     'Delivered – Pending Collection',
+  'encaisse_non_paye':      'Collected – Pending Payment',
+  'paiements_prets':        'Payment Ready',
+  'paye_et_archive':        'Paid & Archived',
+  'retour_chez_livreur':    'Return with Driver',
+  'retour_transit_entrepot':'Return in Transit',
+  'retour_en_traitement':   'Return Processing',
+  'retour_recu':            'Return Received',
+  'retour_archive':         'Return Archived',
+  'annule':                 'Cancelled',
+
+  // ── Tracking history events (returned by /api/v1/get/tracking/info) ──
   'order_information_received_by_carrier': 'Order Registered',
-  'prete_a_expedier': 'Ready to Ship',
-  'prête_à_expédier': 'Ready to Ship',
-  'en_preparation_stock': 'Stock Preparation',
-  'picked': 'Picked Up',
-  'en_ramassage': 'Being Collected',
-  'vers_hub': 'To Hub',
-  'en_hub': 'At Hub',
-  'accepted_by_carrier': 'Received at Hub',
-  'vers_wilaya': 'To Destination',
-  'en_preparation': 'In Preparation',
-  'dispatched_to_driver': 'Out for Delivery',
-  'en_livraison': 'Out for Delivery',
-  'attempt_delivery': 'Delivery Attempt',
-  'suspendu': 'Suspended',
-  'livre_non_encaisse': 'Delivered - Not Collected',
-  'livré_non_encaissé': 'Delivered - Not Collected',
-  'livred': 'Delivered',
-  'livré': 'Delivered',
-  'encaisse_non_paye': 'Collected - Not Paid',
-  'encaissé_non_payé': 'Collected - Not Paid',
-  'encaissed': 'Payment Collected',
-  'encaissé': 'Payment Collected',
-  'paiements_prets': 'Payment Ready',
-  'paiements_prêts': 'Payment Ready',
-  'payed': 'Payment Completed',
-  'payé': 'Payment Completed',
-  'paye_et_archive': 'Paid & Archived',
-  'payé_et_archivé': 'Paid & Archived',
-  'return_asked': 'Return Initiated',
-  'retour_chez_livreur': 'Return with Driver',
-  'return_in_transit': 'Return in Transit',
-  'retour_transit_entrepot': 'Return to Warehouse',
-  'retour_en_traitement': 'Return Processing',
-  'Return_received': 'Return Received',
-  'retour_recu': 'Return Received',
-  'retour_reçu': 'Return Received',
-  'retour_archive': 'Return Archived',
-  'retour_archivé': 'Return Archived',
-  'annule': 'Cancelled',
-  'annulé': 'Cancelled',
-  'notification_on_order': 'Order Updated'
+  'notification_on_order':  'Order Updated',
+  'picked':                 'Picked Up by Driver',
+  'accepted_by_carrier':    'Received at Hub',
+  'dispatched_to_driver':   'Out for Delivery',
+  'attempt_delivery':       'Delivery Attempt',
+  'return_asked':           'Return Initiated',
+  'return_in_transit':      'Return in Transit',
+  'Return_received':        'Return Received',
+  'livred':                 'Delivered',
+  'encaissed':              'Payment Collected',
+  'payed':                  'Payment Completed',
+
+  // ── Accented / legacy variants (defensive — some older API calls may return these) ──
+  'prête_à_expédier':       'Ready to Ship',
+  'livré_non_encaissé':     'Delivered – Pending Collection',
+  'encaissé_non_payé':      'Collected – Pending Payment',
+  'paiements_prêts':        'Payment Ready',
+  'payé_et_archivé':        'Paid & Archived',
+  'retour_reçu':            'Return Received',
+  'retour_archivé':         'Return Archived',
+  'annulé':                 'Cancelled',
+  'livré':                  'Delivered',
+  'encaissé':               'Payment Collected',
+  'payé':                   'Payment Completed',
 };
+
 
 export const WILAYAS: Record<string, string> = {
   '1': 'Adrar', '2': 'Chlef', '3': 'Laghouat', '4': 'Oum El Bouaghi', '5': 'Batna',
