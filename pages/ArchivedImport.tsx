@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { importArchivedOrders, fetchArchivedFromDb, fetchOrdersByTrackings, saveToArchive } from '../services/api';
@@ -6,7 +6,7 @@ import { Order } from '../types';
 import { STATUS_TRANSLATIONS, WILAYAS } from '../constants';
 import {
   Upload, CheckCircle, XCircle, Archive, RefreshCw,
-  ClipboardList, AlertCircle, Download, Trash2, DollarSign
+  ClipboardList, AlertCircle, Download, Trash2, DollarSign, FileUp, Eye
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -25,6 +25,13 @@ const ArchivedImport: React.FC = () => {
   const [archivedOrders, setArchivedOrders] = useState<Order[]>([]);
   const [loadingArchived, setLoadingArchived] = useState(true);
   const [refetchingRevenue, setRefetchingRevenue] = useState(false);
+
+  // CSV Upload state
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const [csvPreview, setCsvPreview] = useState<{ tracking: string; montant: number }[]>([]);
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [csvApplying, setCsvApplying] = useState(false);
+  const [csvResult, setCsvResult] = useState<{ updated: number; notFound: number } | null>(null);
 
   // Load existing archived orders
   useEffect(() => {
@@ -86,6 +93,87 @@ const ArchivedImport: React.FC = () => {
       console.error('Revenue refetch failed:', err);
     } finally {
       setRefetchingRevenue(false);
+    }
+  };
+
+  // ── CSV Upload ─────────────────────────────────────────────────────────────
+  const handleCsvFile = (file: File) => {
+    setCsvError(null);
+    setCsvPreview([]);
+    setCsvResult(null);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) throw new Error('CSV must have at least a header row and one data row.');
+
+        // Detect delimiter (comma, semicolon, tab)
+        const delim = lines[0].includes(';') ? ';' : lines[0].includes('\t') ? '\t' : ',';
+        const headers = lines[0].split(delim).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+
+        // Find tracking column — accept: tracking, numero, suivi, code, id
+        const trackingIdx = headers.findIndex(h =>
+          ['tracking', 'numero', 'numéro', 'suivi', 'code_suivi', 'tracking_number', 'id'].includes(h)
+        );
+        // Find montant column — accept: montant, amount, total, valeur, prix, cod
+        const montantIdx = headers.findIndex(h =>
+          ['montant', 'amount', 'total', 'valeur', 'prix', 'cod', 'montant_a_collecter', 'collecte'].includes(h)
+        );
+
+        if (trackingIdx === -1) throw new Error(`Could not find a tracking column. Headers found: ${headers.join(', ')}`);
+        if (montantIdx === -1) throw new Error(`Could not find a montant/amount column. Headers found: ${headers.join(', ')}`);
+
+        const parsed: { tracking: string; montant: number }[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(delim).map(c => c.trim().replace(/^"|"$/g, ''));
+          const tracking = cols[trackingIdx]?.trim().toUpperCase();
+          const montant = parseFloat(cols[montantIdx]?.replace(/[^\d.]/g, '') || '0');
+          if (tracking && montant > 0) parsed.push({ tracking, montant });
+        }
+
+        if (!parsed.length) throw new Error('No valid rows found with both tracking and montant > 0.');
+        setCsvPreview(parsed);
+      } catch (err: any) {
+        setCsvError(err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleCsvDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) handleCsvFile(file);
+  };
+
+  const handleApplyCsv = async () => {
+    if (!csvPreview.length || !user?.id) return;
+    setCsvApplying(true);
+    setCsvResult(null);
+    try {
+      let updated = 0;
+      let notFound = 0;
+      // Batch update in Supabase
+      for (const row of csvPreview) {
+        const { error } = await supabase
+          .from('orders')
+          .update({ montant: row.montant, updated_at: new Date().toISOString() })
+          .eq('tracking', row.tracking)
+          .eq('user_id', user.id);
+        if (error) { notFound++; } else { updated++; }
+      }
+      setCsvResult({ updated, notFound });
+      setCsvPreview([]);
+      if (csvInputRef.current) csvInputRef.current.value = '';
+      // Refresh list
+      const refreshed = await fetchArchivedFromDb(user.id);
+      setArchivedOrders(refreshed);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setCsvApplying(false);
     }
   };
 
@@ -283,7 +371,129 @@ const ArchivedImport: React.FC = () => {
           </div>
         )}
 
+        {/* CSV Upload — update montant from Ecotrack export */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <FileUp size={20} className="text-yellow-400" />
+            <h2 className="text-lg font-semibold">Update Amounts from CSV</h2>
+          </div>
+          <p className="text-sm text-gray-400">
+            Export your archived orders from the Ecotrack web dashboard as CSV, then upload it here to fill in the missing <strong className="text-white">montant</strong> values.
+            The CSV must have a <code className="bg-gray-800 px-1 rounded text-xs">tracking</code> column and a <code className="bg-gray-800 px-1 rounded text-xs">montant</code> column (also accepts: amount, total, valeur, cod).
+          </p>
+
+          {/* Drop zone */}
+          <div
+            onDrop={handleCsvDrop}
+            onDragOver={e => e.preventDefault()}
+            onClick={() => csvInputRef.current?.click()}
+            className="border-2 border-dashed border-gray-700 hover:border-yellow-500 rounded-xl p-8 text-center cursor-pointer transition-colors group"
+          >
+            <FileUp size={32} className="mx-auto mb-2 text-gray-600 group-hover:text-yellow-400 transition-colors" />
+            <p className="text-gray-400 text-sm">Drag & drop a CSV file here, or <span className="text-yellow-400 underline">click to browse</span></p>
+            <p className="text-gray-600 text-xs mt-1">Supports comma, semicolon, and tab-delimited files</p>
+            <input
+              ref={csvInputRef}
+              type="file"
+              accept=".csv,.txt,.tsv"
+              className="hidden"
+              onChange={e => { if (e.target.files?.[0]) handleCsvFile(e.target.files[0]); }}
+            />
+          </div>
+
+          {/* Error */}
+          {csvError && (
+            <div className="bg-red-950/40 border border-red-800 rounded-lg p-4 flex items-start gap-3">
+              <XCircle className="text-red-400 shrink-0 mt-0.5" size={18} />
+              <div>
+                <p className="text-red-300 font-medium text-sm">Could not parse CSV</p>
+                <p className="text-red-400 text-xs mt-1">{csvError}</p>
+                <p className="text-gray-500 text-xs mt-2">
+                  Tip: make sure the column header is exactly one of: <em>tracking, montant, amount, total, valeur, cod</em>
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Preview */}
+          {csvPreview.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <Eye size={16} className="text-yellow-400" />
+                  <span>Preview — <strong className="text-white">{csvPreview.length}</strong> rows detected</span>
+                </div>
+                <button
+                  onClick={handleApplyCsv}
+                  disabled={csvApplying}
+                  className="flex items-center gap-2 px-5 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-semibold rounded-lg text-sm transition-colors disabled:opacity-60"
+                >
+                  {csvApplying
+                    ? <><RefreshCw size={14} className="animate-spin" /> Applying...</>
+                    : <><CheckCircle size={14} /> Apply {csvPreview.length} updates</>
+                  }
+                </button>
+              </div>
+
+              <div className="bg-gray-950 rounded-lg overflow-hidden border border-gray-800 max-h-52 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-800 sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-gray-400 font-medium">#</th>
+                      <th className="px-3 py-2 text-left text-gray-400 font-medium">Tracking</th>
+                      <th className="px-3 py-2 text-left text-gray-400 font-medium">Montant (DA)</th>
+                      <th className="px-3 py-2 text-left text-gray-400 font-medium">In DB?</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {csvPreview.slice(0, 100).map((row, i) => {
+                      const inDb = archivedOrders.some(o => o.tracking === row.tracking);
+                      return (
+                        <tr key={row.tracking} className="hover:bg-gray-900">
+                          <td className="px-3 py-1.5 text-gray-600">{i + 1}</td>
+                          <td className="px-3 py-1.5 font-mono text-green-400">{row.tracking}</td>
+                          <td className="px-3 py-1.5 text-white font-medium">{row.montant.toLocaleString()} DA</td>
+                          <td className="px-3 py-1.5">
+                            {inDb
+                              ? <span className="text-green-400">✓ Yes</span>
+                              : <span className="text-yellow-500">⚠ Not imported yet</span>
+                            }
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {csvPreview.length > 100 && (
+                  <p className="text-center text-xs text-gray-600 py-2">Showing first 100 of {csvPreview.length} rows</p>
+                )}
+              </div>
+              <p className="text-xs text-gray-500">
+                ⚠ Only orders already in your archive DB will be updated. Rows marked "Not imported yet" will be skipped — import their tracking numbers first.
+              </p>
+            </div>
+          )}
+
+          {/* Apply result */}
+          {csvResult && (
+            <div className="bg-green-950/30 border border-green-800 rounded-lg p-4 flex items-center gap-3">
+              <CheckCircle className="text-green-400 shrink-0" size={20} />
+              <div>
+                <p className="text-green-300 font-medium">
+                  Updated <strong className="text-white">{csvResult.updated}</strong> orders with correct montant
+                </p>
+                {csvResult.notFound > 0 && (
+                  <p className="text-yellow-400 text-xs mt-1">
+                    {csvResult.notFound} rows were skipped (not found in archive — import their tracking numbers first)
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Archived orders table */}
+
         <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
             <div className="flex items-center gap-2">
