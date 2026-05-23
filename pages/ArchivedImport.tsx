@@ -96,8 +96,7 @@ const ArchivedImport: React.FC = () => {
     }
   };
 
-  // ── CSV Upload ─────────────────────────────────────────────────────────────
-  const handleCsvFile = (file: File) => {
+  // ── CSV Upload ───────────────────�  const handleCsvFile = (file: File) => {
     setCsvError(null);
     setCsvPreview([]);
     setCsvResult(null);
@@ -111,30 +110,75 @@ const ArchivedImport: React.FC = () => {
 
         // Detect delimiter (comma, semicolon, tab)
         const delim = lines[0].includes(';') ? ';' : lines[0].includes('\t') ? '\t' : ',';
-        const headers = lines[0].split(delim).map(h => h.trim().toLowerCase().replace(/"/g, ''));
 
-        // Find tracking column — accept: tracking, numero, suivi, code, id
-        const trackingIdx = headers.findIndex(h =>
-          ['tracking', 'numero', 'numéro', 'suivi', 'code_suivi', 'tracking_number', 'id'].includes(h)
-        );
-        // Find montant column — accept: montant, amount, total, valeur, prix, cod
-        const montantIdx = headers.findIndex(h =>
-          ['montant', 'amount', 'total', 'valeur', 'prix', 'cod', 'montant_a_collecter', 'collecte'].includes(h)
-        );
+        // Parse CSV respecting quoted fields (Ecotrack wraps multi-product rows in quotes)
+        const parseCsvLine = (line: string): string[] => {
+          const cols: string[] = [];
+          let current = '';
+          let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') { inQuotes = !inQuotes; continue; }
+            if (ch === delim && !inQuotes) { cols.push(current.trim()); current = ''; continue; }
+            current += ch;
+          }
+          cols.push(current.trim());
+          return cols;
+        };
 
-        if (trackingIdx === -1) throw new Error(`Could not find a tracking column. Headers found: ${headers.join(', ')}`);
-        if (montantIdx === -1) throw new Error(`Could not find a montant/amount column. Headers found: ${headers.join(', ')}`);
+        const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase().trim());
 
-        const parsed: { tracking: string; montant: number }[] = [];
+        // Column index detection
+        // Ecotrack export: Tracking, Réference, déstinataire, Téléphone, Commune, Wilaya,
+        //                  Produits, Remarque, Poids, Livré le, Encaissé le, montant,
+        //                  Frais de livraison, ..., Crée le
+        const col = (names: string[]) => headers.findIndex(h => names.some(n => h.includes(n)));
+
+        const trackingIdx = col(['tracking']);
+        const montantIdx  = col(['montant']);
+        const clientIdx   = col(['déstinataire', 'destinataire', 'client', 'nom_client']);
+        const wilayaIdx   = col(['wilaya']);
+        const communeIdx  = col(['commune']);
+        const produitIdx  = col(['produit']);
+        const dateIdx     = col(['crée le', 'cree le', 'created_at']);
+
+        if (trackingIdx === -1) throw new Error(`Could not find "Tracking" column. Headers: ${headers.join(', ')}`);
+        if (montantIdx  === -1) throw new Error(`Could not find "montant" column. Headers: ${headers.join(', ')}`);
+
+        const parsed: {
+          tracking: string;
+          montant: number;
+          client?: string;
+          wilaya?: string;
+          commune?: string;
+          produit?: string;
+          created_at?: string;
+        }[] = [];
+
         for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(delim).map(c => c.trim().replace(/^"|"$/g, ''));
+          const cols = parseCsvLine(lines[i]);
           const tracking = cols[trackingIdx]?.trim().toUpperCase();
-          const montant = parseFloat(cols[montantIdx]?.replace(/[^\d.]/g, '') || '0');
-          if (tracking && montant > 0) parsed.push({ tracking, montant });
+          if (!tracking) continue;
+
+          // montant format is "6300/" or "6300/4000" — take the first number
+          const rawMontant = cols[montantIdx] || '';
+          const montant = parseFloat(rawMontant.split('/')[0].replace(/[^\d.]/g, '') || '0');
+
+          if (!tracking || montant <= 0) continue;
+
+          parsed.push({
+            tracking,
+            montant,
+            client:     clientIdx  !== -1 ? cols[clientIdx]?.trim()  : undefined,
+            wilaya:     wilayaIdx  !== -1 ? cols[wilayaIdx]?.trim()  : undefined,
+            commune:    communeIdx !== -1 ? cols[communeIdx]?.trim() : undefined,
+            produit:    produitIdx !== -1 ? cols[produitIdx]?.trim() : undefined,
+            created_at: dateIdx    !== -1 ? cols[dateIdx]?.split(' ')[0]?.trim() : undefined,
+          });
         }
 
         if (!parsed.length) throw new Error('No valid rows found with both tracking and montant > 0.');
-        setCsvPreview(parsed);
+        setCsvPreview(parsed as any);
       } catch (err: any) {
         setCsvError(err.message);
       }
@@ -155,11 +199,19 @@ const ArchivedImport: React.FC = () => {
     try {
       let updated = 0;
       let notFound = 0;
-      // Batch update in Supabase
+      // Batch update in Supabase - also enrich client/products/created_at
       for (const row of csvPreview) {
+        const updatePayload: Record<string, any> = {
+          montant: row.montant,
+          updated_at: new Date().toISOString(),
+        };
+        if ((row as any).client)     updatePayload.client     = (row as any).client;
+        if ((row as any).wilaya)     updatePayload.wilaya     = (row as any).wilaya;
+        if ((row as any).produit)    updatePayload.products   = (row as any).produit;
+        if ((row as any).created_at) updatePayload.created_at = (row as any).created_at;
         const { error } = await supabase
           .from('orders')
-          .update({ montant: row.montant, updated_at: new Date().toISOString() })
+          .update(updatePayload)
           .eq('tracking', row.tracking)
           .eq('user_id', user.id);
         if (error) { notFound++; } else { updated++; }
