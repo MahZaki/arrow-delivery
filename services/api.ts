@@ -222,14 +222,24 @@ export async function fetchOrdersByTrackings(
  */
 export async function fetchArchivedFromDb(userId: string): Promise<Order[]> {
   try {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+    let allData: Order[] = [];
+    let start = 0;
+    const limit = 1000;
+    while (true) {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .range(start, start + limit - 1);
 
-    if (error) throw error;
-    return (data || []) as Order[];
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      allData = allData.concat(data as Order[]);
+      if (data.length < limit) break;
+      start += limit;
+    }
+    return allData;
   } catch (error: any) {
     console.error('❌ fetchArchivedFromDb:', error.message);
     return [];
