@@ -183,15 +183,18 @@ export async function fetchOrdersByTrackings(
       if (!response.ok) continue;
 
       const data = await response.json();
-      // Response shape: { data: { "TRACKING_NUM": { status, activity, ... } } }
+      // Response shape: { data: { "TRACKING_NUM": { status, estimated_fee, activity, ... } } }
       if (data?.data) {
         Object.entries(data.data).forEach(([tracking, info]: [string, any]) => {
+          // The filter API only returns: status, estimated_fee, order_id, desk_*, driver_phone, activity
+          // It does NOT return: client, montant, wilaya_id — use estimated_fee as revenue fallback
+          const montant = parseFloat(String(info.montant || info.estimated_fee || 0));
           results.push({
             tracking,
             status: info.status || 'unknown',
             client: info.client || '',
             wilaya_id: info.wilaya_id || '',
-            montant: parseFloat(String(info.montant || 0)),
+            montant,
             tarif_prestation: parseFloat(String(info.tarif_prestation || 0)),
             tarif_retour: parseFloat(String(info.tarif_retour || 0)),
             created_at: info.created_at || new Date().toISOString().split('T')[0],

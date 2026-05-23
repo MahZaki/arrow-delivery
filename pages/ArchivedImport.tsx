@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { importArchivedOrders, fetchArchivedFromDb } from '../services/api';
+import { importArchivedOrders, fetchArchivedFromDb, fetchOrdersByTrackings, saveToArchive } from '../services/api';
 import { Order } from '../types';
 import { STATUS_TRANSLATIONS, WILAYAS } from '../constants';
 import {
   Upload, CheckCircle, XCircle, Archive, RefreshCw,
-  ClipboardList, AlertCircle, Download, Trash2
+  ClipboardList, AlertCircle, Download, Trash2, DollarSign
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -24,6 +24,7 @@ const ArchivedImport: React.FC = () => {
 
   const [archivedOrders, setArchivedOrders] = useState<Order[]>([]);
   const [loadingArchived, setLoadingArchived] = useState(true);
+  const [refetchingRevenue, setRefetchingRevenue] = useState(false);
 
   // Load existing archived orders
   useEffect(() => {
@@ -64,6 +65,28 @@ const ArchivedImport: React.FC = () => {
     if (!window.confirm('Delete ALL archived orders from the database? This cannot be undone.')) return;
     await supabase.from('orders').delete().eq('user_id', user.id);
     setArchivedOrders([]);
+  };
+
+  // Re-fetch estimated_fee for orders that have montant = 0
+  const handleRefetchRevenue = async () => {
+    if (!user?.api_token || !user?.id) return;
+    const zeroRevenue = archivedOrders.filter(o => !o.montant || o.montant === 0);
+    if (!zeroRevenue.length) return;
+
+    setRefetchingRevenue(true);
+    try {
+      const trackings = zeroRevenue.map(o => o.tracking);
+      const updated = await fetchOrdersByTrackings(trackings, user.api_token, 'all');
+      if (updated.length) {
+        await saveToArchive(updated, user.id);
+        const refreshed = await fetchArchivedFromDb(user.id);
+        setArchivedOrders(refreshed);
+      }
+    } catch (err) {
+      console.error('Revenue refetch failed:', err);
+    } finally {
+      setRefetchingRevenue(false);
+    }
   };
 
   const handleExportCSV = () => {
@@ -138,6 +161,16 @@ const ArchivedImport: React.FC = () => {
               <p className="text-sm text-gray-300 mt-1">Export or clear archive</p>
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={handleRefetchRevenue}
+                disabled={refetchingRevenue || !archivedOrders.some(o => !o.montant)}
+                className="p-2 bg-yellow-600 hover:bg-yellow-700 disabled:opacity-40 rounded-lg transition-colors"
+                title="Re-fetch revenue for orders with missing amounts"
+              >
+                {refetchingRevenue
+                  ? <RefreshCw size={16} className="animate-spin" />
+                  : <DollarSign size={16} />}
+              </button>
               <button
                 onClick={handleExportCSV}
                 disabled={!totalArchived}
