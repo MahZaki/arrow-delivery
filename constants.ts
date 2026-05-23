@@ -1,8 +1,8 @@
 
 import { PricingItem, DeskItem, DeskStation } from './types';
 
-export const API_URL = 'https://arrow.ecotrack.dz';
-export const API_TOKEN = 'qyW7zYNUhC5ssqT6VNpfSMOSlFkwzYaNVA02rha2sPPtpasV9KiRgO1qw52D';
+// API base URL — set VITE_API_URL in your .env.local
+export const API_URL = import.meta.env.VITE_API_URL as string;
 
 // Tracking numbers for archived orders that are excluded from the main list API.
 // We explicitly hardcode these in the service to avoid fetch errors.

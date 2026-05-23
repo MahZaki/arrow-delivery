@@ -28,14 +28,18 @@ const Tracking: React.FC = () => {
 
   const handleTrack = async (number: string) => {
     if (!number.trim()) return;
-    
+
+    const token = user?.api_token;
+    if (!token) {
+      setError('No API token configured. Please set your Ecotrack token from the dashboard settings.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setData(null);
 
     try {
-      // Use user's own token if available, otherwise use the master token
-      const token = user?.api_token || undefined;
       const result = await trackOrder(number, token);
       if (!result.success && result.message) {
           setError(result.message === 'Commande inexistante' ? 'Order not found. Please verify the tracking number.' : result.message);

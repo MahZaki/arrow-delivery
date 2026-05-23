@@ -1,4 +1,4 @@
-import { API_TOKEN, API_URL } from '../constants';
+import { API_URL } from '../constants';
 import { Order, TrackingInfo } from '../types';
 import { supabase } from '../lib/supabase';
 
@@ -184,13 +184,11 @@ export async function fetchOrdersFromApi(token: string): Promise<Order[]> {
  */
 export async function trackOrder(
   trackingNumber: string,
-  token?: string
+  token: string
 ): Promise<TrackingInfo> {
+  if (!token) throw new Error('API token is required to track orders.');
   try {
-    const authToken = token || API_TOKEN;
-    
-    // Fetch tracking info
-    const url = `${API_URL}/api/v1/get/tracking/info?api_token=${authToken}&tracking=${trackingNumber}`;
+    const url = `${API_URL}/api/v1/get/tracking/info?api_token=${token}&tracking=${trackingNumber}`;
     const response = await fetchWithRetry(url);
 
     if (!response.ok) {
@@ -198,11 +196,7 @@ export async function trackOrder(
     }
 
     const data = await response.json();
-    
-    if (!data.tracking) {
-      data.tracking = trackingNumber;
-    }
-
+    if (!data.tracking) data.tracking = trackingNumber;
     return data;
 
   } catch (error: any) {
