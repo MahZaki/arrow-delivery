@@ -96,7 +96,8 @@ const ArchivedImport: React.FC = () => {
     }
   };
 
-  // ── CSV Upload ───────────────────�  const handleCsvFile = (file: File) => {
+  // -- CSV Upload --
+  const handleCsvFile = (file: File) => {
     setCsvError(null);
     setCsvPreview([]);
     setCsvResult(null);
@@ -108,84 +109,68 @@ const ArchivedImport: React.FC = () => {
         const lines = text.split(/\r?\n/).filter(l => l.trim());
         if (lines.length < 2) throw new Error('CSV must have at least a header row and one data row.');
 
-        // Detect delimiter (comma, semicolon, tab)
         const delim = lines[0].includes(';') ? ';' : lines[0].includes('\t') ? '\t' : ',';
 
-        // Parse CSV respecting quoted fields (Ecotrack wraps multi-product rows in quotes)
-        const parseCsvLine = (line: string): string[] => {
+        // Quoted-CSV parser handles commas inside quoted product fields
+        const parseLine = (line: string): string[] => {
           const cols: string[] = [];
-          let current = '';
-          let inQuotes = false;
+          let cur = '', inQ = false;
           for (let i = 0; i < line.length; i++) {
-            const ch = line[i];
-            if (ch === '"') { inQuotes = !inQuotes; continue; }
-            if (ch === delim && !inQuotes) { cols.push(current.trim()); current = ''; continue; }
-            current += ch;
+            const c = line[i];
+            if (c === '"') { inQ = !inQ; continue; }
+            if (c === delim && !inQ) { cols.push(cur.trim()); cur = ''; continue; }
+            cur += c;
           }
-          cols.push(current.trim());
+          cols.push(cur.trim());
           return cols;
         };
 
-        const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase().trim());
+        // Strip French accents for robust header matching
+        const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        const headers = parseLine(lines[0]).map(norm);
 
-        // Column index detection
-        // Ecotrack export: Tracking, Réference, déstinataire, Téléphone, Commune, Wilaya,
-        //                  Produits, Remarque, Poids, Livré le, Encaissé le, montant,
-        //                  Frais de livraison, ..., Crée le
+        // Ecotrack CSV columns (accent-normalised):
+        // 0:tracking  2:destinataire  5:wilaya  6:produits
+        // 11:montant  19:net recouvert  22:cree le
         const col = (names: string[]) => headers.findIndex(h => names.some(n => h.includes(n)));
 
         const trackingIdx = col(['tracking']);
-        const montantIdx  = col(['montant']);
-        const clientIdx   = col(['déstinataire', 'destinataire', 'client', 'nom_client']);
+        const netIdx      = col(['net recouvert', 'net recouvre', 'net_recouvert']);
+        const clientIdx   = col(['destinataire', 'client', 'nom_client']);
         const wilayaIdx   = col(['wilaya']);
-        const communeIdx  = col(['commune']);
         const produitIdx  = col(['produit']);
-        const dateIdx     = col(['crée le', 'cree le', 'created_at']);
+        const dateIdx     = col(['cree le', 'created_at']);
 
-        if (trackingIdx === -1) throw new Error(`Could not find "Tracking" column. Headers: ${headers.join(', ')}`);
-        if (montantIdx  === -1) throw new Error(`Could not find "montant" column. Headers: ${headers.join(', ')}`);
+        if (trackingIdx === -1) throw new Error(`Cannot find "Tracking" column. Headers: ${headers.join(', ')}`);
+        if (netIdx === -1) throw new Error(`Cannot find "Net recouvert" column. Headers: ${headers.join(', ')}`);
 
-        const parsed: {
-          tracking: string;
-          montant: number;
-          client?: string;
-          wilaya?: string;
-          commune?: string;
-          produit?: string;
-          created_at?: string;
-        }[] = [];
+        const parsed: { tracking: string; montant: number; client?: string; wilaya?: string; produit?: string; created_at?: string }[] = [];
 
         for (let i = 1; i < lines.length; i++) {
-          const cols = parseCsvLine(lines[i]);
+          const cols = parseLine(lines[i]);
           const tracking = cols[trackingIdx]?.trim().toUpperCase();
           if (!tracking) continue;
-
-          // montant format is "6300/" or "6300/4000" — take the first number
-          const rawMontant = cols[montantIdx] || '';
-          const montant = parseFloat(rawMontant.split('/')[0].replace(/[^\d.]/g, '') || '0');
-
-          if (!tracking || montant <= 0) continue;
-
+          // Net recouvert = actual payout to seller after delivery fees
+          const montant = parseFloat(cols[netIdx]?.replace(/[^\d.-]/g, '') || '0');
+          if (montant <= 0) continue;
           parsed.push({
             tracking,
             montant,
             client:     clientIdx  !== -1 ? cols[clientIdx]?.trim()  : undefined,
             wilaya:     wilayaIdx  !== -1 ? cols[wilayaIdx]?.trim()  : undefined,
-            commune:    communeIdx !== -1 ? cols[communeIdx]?.trim() : undefined,
             produit:    produitIdx !== -1 ? cols[produitIdx]?.trim() : undefined,
             created_at: dateIdx    !== -1 ? cols[dateIdx]?.split(' ')[0]?.trim() : undefined,
           });
         }
 
-        if (!parsed.length) throw new Error('No valid rows found with both tracking and montant > 0.');
-        setCsvPreview(parsed as any);
+        if (!parsed.length) throw new Error('No rows with Net recouvert > 0 found. Check your CSV.');
+        setCsvPreview(parsed);
       } catch (err: any) {
         setCsvError(err.message);
       }
     };
     reader.readAsText(file);
   };
-
   const handleCsvDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
