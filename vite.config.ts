@@ -9,13 +9,9 @@ export default defineConfig(({ mode }) => {
         port: 3000,
         host: '0.0.0.0',
         proxy: {
-          '/zr-api': {
+          '/api/v1.0': {
             target: 'https://api.zrexpress.app',
             changeOrigin: true,
-            rewrite: (p) => p.replace(/^\/zr-api/, '/api/v1.0'),
-            headers: {
-              'Origin': 'https://api.zrexpress.app',
-            },
           },
         },
       },
