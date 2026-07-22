@@ -8,6 +8,13 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        proxy: {
+          '/zr-api': {
+            target: 'https://api.zrexpress.app',
+            changeOrigin: true,
+            rewrite: (p) => p.replace(/^\/zr-api/, '/api/v1.0'),
+          },
+        },
       },
       plugins: [react()],
       define: {
