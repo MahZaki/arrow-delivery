@@ -1,6 +1,6 @@
-import React, { createContext, useState, useContext, useEffect, useMemo, ReactNode } from 'react';
+import React, { createContext, useState, useContext, useEffect, useMemo, useCallback, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
-import { UserProfile } from '../types';
+import { UserProfile, ZrCredentials } from '../types';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -14,6 +14,7 @@ interface AuthContextType {
   updateZrCredentials: (tenantId: string, apiKey: string) => Promise<boolean>;
   createSubAccount: (email: string, password: string, markupType: 'flat' | 'percentage', markupValue: number) => Promise<{ success: boolean; error?: string }>;
   updateSubAccountMarkup: (subId: string, markupType: 'flat' | 'percentage', markupValue: number) => Promise<boolean>;
+  resolveZrCredentials: () => Promise<ZrCredentials | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -109,6 +110,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const isMaster = !!(user?.role === 'admin' && !user?.master_id);
 
+  const resolveZrCredentials = useCallback(async (): Promise<ZrCredentials | null> => {
+    if (!user) return null;
+
+    if (user.zr_tenant_id && user.zr_api_key) {
+      return { tenantId: user.zr_tenant_id, apiKey: user.zr_api_key };
+    }
+
+    if (user.master_id) {
+      const { data: master } = await supabase
+        .from('profiles')
+        .select('zr_tenant_id, zr_api_key')
+        .eq('id', user.master_id)
+        .single();
+
+      if (master?.zr_tenant_id && master?.zr_api_key) {
+        return { tenantId: master.zr_tenant_id, apiKey: master.zr_api_key };
+      }
+    }
+
+    return null;
+  }, [user]);
+
   const createSubAccount = async (
     email: string, password: string,
     markupType: 'flat' | 'percentage', markupValue: number
@@ -187,7 +210,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     updateZrCredentials,
     createSubAccount,
     updateSubAccountMarkup,
-  }), [user, isLoading]);
+    resolveZrCredentials,
+  }), [user, isLoading, resolveZrCredentials]);
 
   return (
     <AuthContext.Provider value={value}>

@@ -8,7 +8,7 @@ import { ArrowLeft, Plus, Trash2, Package, MapPin, Phone, User, Tag, Truck, Home
 
 const ZrCreateOrder: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, resolveZrCredentials } = useAuth();
 
   const [wilayas, setWilayas] = useState<ZrTerritory[]>([]);
   const [communes, setCommunes] = useState<ZrTerritory[]>([]);
@@ -32,10 +32,11 @@ const ZrCreateOrder: React.FC = () => {
     { name: '', price: '', quantity: '1' },
   ]);
 
-  const credentials: ZrCredentials | null =
-    user?.zr_tenant_id && user?.zr_api_key
-      ? { tenantId: user.zr_tenant_id, apiKey: user.zr_api_key }
-      : null;
+  const [credentials, setCredentials] = useState<ZrCredentials | null>(null);
+
+  useEffect(() => {
+    resolveZrCredentials().then(setCredentials);
+  }, [resolveZrCredentials]);
 
   useEffect(() => {
     if (!credentials) return;

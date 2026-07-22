@@ -16,13 +16,14 @@ const Tracking: React.FC = () => {
   const [data, setData] = useState<TrackingInfo | null>(null);
   const [zrData, setZrData] = useState<ZrParcel | null>(null);
   const [carrier, setCarrier] = useState<'ecotrack' | 'zrexpress'>('ecotrack');
-  const { user } = useAuth();
+  const { user, resolveZrCredentials } = useAuth();
   const location = useLocation();
 
-  const zrCreds: ZrCredentials | null =
-    user?.zr_tenant_id && user?.zr_api_key
-      ? { tenantId: user.zr_tenant_id, apiKey: user.zr_api_key }
-      : null;
+  const [zrCreds, setZrCreds] = useState<ZrCredentials | null>(null);
+
+  useEffect(() => {
+    resolveZrCredentials().then(setZrCreds);
+  }, [resolveZrCredentials]);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);

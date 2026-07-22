@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchOrdersFromApi, fetchArchivedFromDb, autoArchiveDisappeared, clearCache } from '../services/api';
-import { Order } from '../types';
+import { Order, ZrCredentials } from '../types';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatusBadge from '../components/StatusBadge';
 import ZrDashboardContent from '../components/ZrDashboardContent';
@@ -18,7 +18,7 @@ import { WILAYAS } from '../constants';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user, updateApiToken, updateZrCredentials } = useAuth();
+  const { user, updateApiToken, updateZrCredentials, resolveZrCredentials } = useAuth();
   const { carrier, setCarrier } = useCarrier();
   
   // State for Client Dashboard
@@ -36,6 +36,10 @@ const Dashboard: React.FC = () => {
   const [newZrTenant, setNewZrTenant] = useState('');
   const [newZrApiKey, setNewZrApiKey] = useState('');
   const [isSavingZr, setIsSavingZr] = useState(false);
+
+  // Resolved ZR credentials (own or inherited from master)
+  const [zrCreds, setZrCreds] = useState<ZrCredentials | null>(null);
+  const [resolvingCreds, setResolvingCreds] = useState(true);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -74,6 +78,14 @@ const Dashboard: React.FC = () => {
         setLoading(false);
     }
   }, [user]);
+
+  useEffect(() => {
+    setResolvingCreds(true);
+    resolveZrCredentials().then(creds => {
+      setZrCreds(creds);
+      setResolvingCreds(false);
+    });
+  }, [resolveZrCredentials]);
 
   // Load: live active orders from API + archived from Supabase, merged
   const initDashboard = async (userId: string, token: string) => {
@@ -252,47 +264,51 @@ const Dashboard: React.FC = () => {
       return <div className="min-h-screen flex items-center justify-center"><LoadingSpinner text="Loading Dashboard..." /></div>;
   }
 
-  // ZR Express credentials check
-  const zrCreds = user?.zr_tenant_id && user?.zr_api_key
-    ? { tenantId: user.zr_tenant_id, apiKey: user.zr_api_key }
-    : null;
-
-  // ZR mode with credentials → show ZR dashboard
+  // ZR mode → show ZR dashboard
   if (carrier === 'zrexpress') {
+    if (resolvingCreds) {
+      return <LoadingSpinner />;
+    }
     if (!zrCreds) {
       return (
         <div className="max-w-md mx-auto mt-20 p-8 bg-arrow-dark border border-amber-600/30 rounded-2xl shadow-xl text-center">
           <h2 className="text-2xl font-bold text-white mb-4">ZR Express Setup</h2>
-          <p className="text-gray-400 mb-2">Enter your ZR Express credentials to manage parcels.</p>
-          <p className="text-xs text-gray-600 mb-6">
-            You need a Tenant ID and API Key from the ZR Express portal.
-          </p>
-          <input
-            type="text"
-            value={newZrTenant}
-            onChange={(e) => setNewZrTenant(e.target.value)}
-            placeholder="ZR Tenant ID"
-            className="w-full bg-black border border-neutral-700 p-3 rounded-xl text-white mb-3 focus:border-amber-500 focus:outline-none"
-          />
-          <input
-            type="text"
-            value={newZrApiKey}
-            onChange={(e) => setNewZrApiKey(e.target.value)}
-            placeholder="ZR API Key"
-            className="w-full bg-black border border-neutral-700 p-3 rounded-xl text-white mb-4 focus:border-amber-500 focus:outline-none"
-          />
-          <button
-            onClick={handleSaveZrCredentials}
-            disabled={isSavingZr || !newZrTenant || !newZrApiKey}
-            className="w-full bg-amber-600 hover:bg-amber-500 text-black font-bold py-3 rounded-xl transition-colors disabled:opacity-50"
-          >
-            {isSavingZr ? 'Saving...' : 'Connect ZR Express'}
-          </button>
+          {user?.master_id ? (
+            <p className="text-gray-400">Your master account hasn't configured ZR Express yet. Contact your admin.</p>
+          ) : (
+            <>
+              <p className="text-gray-400 mb-2">Enter your ZR Express credentials to manage parcels.</p>
+              <p className="text-xs text-gray-600 mb-6">
+                You need a Tenant ID and API Key from the ZR Express portal.
+              </p>
+              <input
+                type="text"
+                value={newZrTenant}
+                onChange={(e) => setNewZrTenant(e.target.value)}
+                placeholder="ZR Tenant ID"
+                className="w-full bg-black border border-neutral-700 p-3 rounded-xl text-white mb-3 focus:border-amber-500 focus:outline-none"
+              />
+              <input
+                type="text"
+                value={newZrApiKey}
+                onChange={(e) => setNewZrApiKey(e.target.value)}
+                placeholder="ZR API Key"
+                className="w-full bg-black border border-neutral-700 p-3 rounded-xl text-white mb-4 focus:border-amber-500 focus:outline-none"
+              />
+              <button
+                onClick={handleSaveZrCredentials}
+                disabled={isSavingZr || !newZrTenant || !newZrApiKey}
+                className="w-full bg-amber-600 hover:bg-amber-500 text-black font-bold py-3 rounded-xl transition-colors disabled:opacity-50"
+              >
+                {isSavingZr ? 'Saving...' : 'Connect ZR Express'}
+              </button>
+            </>
+          )}
           {error && <p className="text-red-400 text-sm mt-4">{error}</p>}
         </div>
       );
     }
-    return <ZrDashboardContent credentials={zrCreds} />;
+    return <ZrDashboardContent credentials={zrCreds!} />;
   }
 
   // Token Prompt (Ecotrack mode)
