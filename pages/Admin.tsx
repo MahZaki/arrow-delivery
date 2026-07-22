@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { WILAYAS } from '../constants';
 import { PricingItem } from '../types';
+import { supabase } from '../lib/supabase';
 import { 
     Trash2, MapPin, DollarSign, Building, Loader2, Lock, Users, Save, Database, 
     AlertCircle, CheckCircle, XCircle, X
@@ -207,6 +208,17 @@ const Admin: React.FC = () => {
       else showToast('error', 'Failed to update token');
   };
 
+  const handleUpdateZrCredentials = async (userId: string, tenantId: string, apiKey: string) => {
+      setProcessingId(`zr-${userId}`);
+      const { error } = await supabase
+        .from('profiles')
+        .update({ zr_tenant_id: tenantId || null, zr_api_key: apiKey || null })
+        .eq('id', userId);
+      setProcessingId(null);
+      if (!error) { showToast('success', 'ZR credentials updated'); refreshUsers(); }
+      else showToast('error', 'Failed to update ZR credentials');
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 relative">
       {/* Toast Notification */}
@@ -290,6 +302,8 @@ const Admin: React.FC = () => {
                             <th className="px-4 py-3">Email</th>
                             <th className="px-4 py-3">Role</th>
                             <th className="px-4 py-3">API Token</th>
+                            <th className="px-4 py-3">ZR Tenant ID</th>
+                            <th className="px-4 py-3">ZR API Key</th>
                             <th className="px-4 py-3">Actions</th>
                         </tr>
                     </thead>
@@ -303,30 +317,61 @@ const Admin: React.FC = () => {
                                     </span>
                                 </td>
                                 <td className="p-4">
+                                    <div className="flex gap-2 items-center">
+                                        <input 
+                                            type="text" 
+                                            defaultValue={u.api_token || ''} 
+                                            placeholder="No Token"
+                                            id={`token-input-${u.id}`}
+                                            className="bg-black border border-neutral-700 rounded px-3 py-2 text-white w-full focus:border-arrow-green focus:outline-none font-mono text-xs"
+                                        />
+                                        <button 
+                                            onClick={() => {
+                                                const input = document.getElementById(`token-input-${u.id}`) as HTMLInputElement;
+                                                handleUpdateUserToken(u.id, input.value);
+                                            }}
+                                            disabled={processingId === `user-token-${u.id}`}
+                                            className="text-arrow-green hover:text-emerald-400 disabled:opacity-50 shrink-0"
+                                        >
+                                            {processingId === `user-token-${u.id}` ? <Loader2 size={16} className="animate-spin"/> : <Save size={16} />}
+                                        </button>
+                                    </div>
+                                </td>
+                                <td className="p-4">
                                     <input 
                                         type="text" 
-                                        defaultValue={u.api_token || ''} 
-                                        placeholder="No Token Assigned"
-                                        id={`token-input-${u.id}`}
-                                        className="bg-black border border-neutral-700 rounded px-3 py-2 text-white w-full max-w-md focus:border-arrow-green focus:outline-none"
+                                        defaultValue={u.zr_tenant_id || ''} 
+                                        placeholder="—"
+                                        id={`zr-tenant-${u.id}`}
+                                        className="bg-black border border-neutral-700 rounded px-3 py-2 text-white w-full focus:border-amber-500 focus:outline-none font-mono text-xs"
+                                    />
+                                </td>
+                                <td className="p-4">
+                                    <input 
+                                        type="text" 
+                                        defaultValue={u.zr_api_key || ''} 
+                                        placeholder="—"
+                                        id={`zr-key-${u.id}`}
+                                        className="bg-black border border-neutral-700 rounded px-3 py-2 text-white w-full focus:border-amber-500 focus:outline-none font-mono text-xs"
                                     />
                                 </td>
                                 <td className="p-4">
                                     <button 
                                         onClick={() => {
-                                            const input = document.getElementById(`token-input-${u.id}`) as HTMLInputElement;
-                                            handleUpdateUserToken(u.id, input.value);
+                                            const tenantInput = document.getElementById(`zr-tenant-${u.id}`) as HTMLInputElement;
+                                            const keyInput = document.getElementById(`zr-key-${u.id}`) as HTMLInputElement;
+                                            handleUpdateZrCredentials(u.id, tenantInput.value, keyInput.value);
                                         }}
-                                        disabled={processingId === `user-token-${u.id}`}
-                                        className="text-arrow-green hover:text-emerald-400 flex items-center gap-1 font-bold disabled:opacity-50"
+                                        disabled={processingId === `zr-${u.id}`}
+                                        className="text-amber-400 hover:text-amber-300 disabled:opacity-50"
                                     >
-                                        {processingId === `user-token-${u.id}` ? <Loader2 size={18} className="animate-spin"/> : <><Save size={18} /> Save</>}
+                                        {processingId === `zr-${u.id}` ? <Loader2 size={16} className="animate-spin"/> : <Save size={16} />}
                                     </button>
                                 </td>
                             </tr>
                         ))}
                         {users.length === 0 && (
-                            <tr><td colSpan={4} className="p-8 text-center text-gray-500">No users found.</td></tr>
+                            <tr><td colSpan={6} className="p-8 text-center text-gray-500">No users found.</td></tr>
                         )}
                     </tbody>
                 </table>

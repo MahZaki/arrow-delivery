@@ -11,14 +11,17 @@ import Admin from './pages/Admin';
 import AdminLogin from './pages/AdminLogin';
 import ArchivedImport from './pages/ArchivedImport';
 import Finance from './pages/Finance';
+import ZrCreateOrder from './pages/ZrCreateOrder';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
+import { CarrierProvider } from './contexts/CarrierContext';
 import { DataProvider } from './contexts/DataContext';
 
 const App: React.FC = () => {
   return (
     <Router>
       <AuthProvider>
+        <CarrierProvider>
         <DataProvider>
           <div className="bg-arrow-black min-h-screen text-arrow-light flex flex-col font-sans selection:bg-arrow-green selection:text-black">
             <Navbar />
@@ -34,6 +37,7 @@ const App: React.FC = () => {
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/archive" element={<ArchivedImport />} />
                   <Route path="/finance" element={<Finance />} />
+                  <Route path="/zr-create-order" element={<ZrCreateOrder />} />
                   <Route path="/admin" element={<Admin />} />
                 </Route>
               </Routes>
@@ -41,6 +45,7 @@ const App: React.FC = () => {
             <Footer />
           </div>
         </DataProvider>
+        </CarrierProvider>
       </AuthProvider>
     </Router>
   );

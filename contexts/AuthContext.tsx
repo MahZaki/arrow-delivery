@@ -10,6 +10,7 @@ interface AuthContextType {
   signup: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   updateApiToken: (token: string) => Promise<boolean>;
+  updateZrCredentials: (tenantId: string, apiKey: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -124,6 +125,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return false;
   };
 
+  const updateZrCredentials = async (tenantId: string, apiKey: string): Promise<boolean> => {
+    if (!user) return false;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ zr_tenant_id: tenantId, zr_api_key: apiKey })
+      .eq('id', user.id);
+
+    if (!error) {
+      setUser({ ...user, zr_tenant_id: tenantId, zr_api_key: apiKey });
+      return true;
+    }
+    return false;
+  };
+
   const value = useMemo(() => ({ 
     user,
     isAuthenticated: !!user, 
@@ -131,7 +147,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     login,
     signup,
     logout,
-    updateApiToken
+    updateApiToken,
+    updateZrCredentials
   }), [user, isLoading]);
 
   return (

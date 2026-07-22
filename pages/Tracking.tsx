@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Search, MapPin, Calendar, MessageSquare, AlertCircle, Package, Phone, Wallet, Banknote, Tag } from 'lucide-react';
+import { Search, MapPin, Calendar, MessageSquare, AlertCircle, Package, Phone, Wallet, Banknote, Tag, Truck } from 'lucide-react';
 import { trackOrder } from '../services/api';
-import { TrackingInfo } from '../types';
+import { getParcelByTracking } from '../services/zrExpressApi';
+import { TrackingInfo, ZrParcel, ZrCredentials } from '../types';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatusBadge from '../components/StatusBadge';
 import { STATUS_TRANSLATIONS, WILAYAS } from '../constants';
@@ -13,21 +14,53 @@ const Tracking: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<TrackingInfo | null>(null);
+  const [zrData, setZrData] = useState<ZrParcel | null>(null);
+  const [carrier, setCarrier] = useState<'ecotrack' | 'zrexpress'>('ecotrack');
   const { user } = useAuth();
   const location = useLocation();
 
+  const zrCreds: ZrCredentials | null =
+    user?.zr_tenant_id && user?.zr_api_key
+      ? { tenantId: user.zr_tenant_id, apiKey: user.zr_api_key }
+      : null;
+
   useEffect(() => {
-    // Check for query param if navigating from somewhere else
     const searchParams = new URLSearchParams(location.search);
     const trackingParam = searchParams.get('tracking');
+    const carrierParam = searchParams.get('carrier');
+    if (carrierParam === 'zrexpress' || carrierParam === 'ecotrack') {
+      setCarrier(carrierParam);
+    }
     if (trackingParam && trackingParam !== trackingNumber) {
         setTrackingNumber(trackingParam);
-        handleTrack(trackingParam);
+        handleTrack(trackingParam, carrierParam as 'ecotrack' | 'zrexpress' || 'ecotrack');
     }
   }, [location.search]);
 
-  const handleTrack = async (number: string) => {
+  const handleTrack = async (number: string, selectedCarrier?: string) => {
     if (!number.trim()) return;
+
+    const activeCarrier = (selectedCarrier as 'ecotrack' | 'zrexpress') || carrier;
+
+    if (activeCarrier === 'zrexpress') {
+      if (!zrCreds) {
+        setError('ZR Express credentials not configured. Please set them in the dashboard.');
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      setData(null);
+      setZrData(null);
+      try {
+        const parcel = await getParcelByTracking(zrCreds, number);
+        setZrData(parcel);
+      } catch (err: any) {
+        setError(err.message || 'Failed to fetch ZR Express tracking info.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     const token = user?.api_token;
     if (!token) {
@@ -38,6 +71,7 @@ const Tracking: React.FC = () => {
     setLoading(true);
     setError(null);
     setData(null);
+    setZrData(null);
 
     try {
       const result = await trackOrder(number, token);
@@ -69,21 +103,51 @@ const Tracking: React.FC = () => {
         <p className="text-arrow-gray">Enter your tracking number to see the real-time status and details of your package.</p>
       </div>
 
+      {/* Carrier Toggle */}
+      <div className="flex justify-center mb-6">
+        <div className="bg-neutral-900 rounded-xl border border-neutral-700 overflow-hidden inline-flex">
+          <button
+            onClick={() => setCarrier('ecotrack')}
+            className={`px-6 py-2.5 text-sm font-bold transition-colors ${
+              carrier === 'ecotrack'
+              ? 'bg-arrow-green text-black'
+              : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            Arrow Delivery
+          </button>
+          <button
+            onClick={() => setCarrier('zrexpress')}
+            className={`px-6 py-2.5 text-sm font-bold transition-colors ${
+              carrier === 'zrexpress'
+              ? 'bg-amber-500 text-black'
+              : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            ZR Express
+          </button>
+        </div>
+      </div>
+
       {/* Search Input */}
-      <div className="bg-arrow-dark border border-arrow-deepGreen rounded-2xl p-6 shadow-xl mb-8">
+      <div className={`bg-arrow-dark border rounded-2xl p-6 shadow-xl mb-8 ${carrier === 'zrexpress' ? 'border-amber-600/30' : 'border-arrow-deepGreen'}`}>
         <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-4">
             <input 
                 type="text" 
                 value={trackingNumber}
                 onChange={(e) => setTrackingNumber(e.target.value)}
-                placeholder="e.g., ECQFLD2103047673"
+                placeholder={carrier === 'zrexpress' ? "e.g., DZ-AL-20251121-00145" : "e.g., ECQFLD2103047673"}
                 className="flex-1 bg-neutral-950 border border-arrow-deepGreen text-white px-6 py-4 rounded-xl focus:outline-none focus:border-arrow-green focus:shadow-[0_0_0_2px_rgba(47,191,142,0.2)] transition-all"
                 required
             />
             <button 
                 type="submit"
                 disabled={loading}
-                className="bg-arrow-green hover:bg-emerald-400 text-black font-bold px-8 py-4 rounded-xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className={`font-bold px-8 py-4 rounded-xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-black ${
+                  carrier === 'zrexpress'
+                  ? 'bg-amber-600 hover:bg-amber-500'
+                  : 'bg-arrow-green hover:bg-emerald-400'
+                }`}
             >
                 {loading ? 'Searching...' : <><Search size={20} /> Track</>}
             </button>
@@ -100,6 +164,88 @@ const Tracking: React.FC = () => {
 
       {/* Loading State */}
       {loading && <LoadingSpinner text="Locating your package..." />}
+
+      {/* ZR Results */}
+      {zrData && (
+        <div className="space-y-6 animate-slide-up">
+          <div className="bg-arrow-dark border border-amber-600/30 rounded-2xl p-6 md:p-8 shadow-[0_0_20px_rgba(217,119,6,0.1)]">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-neutral-800 pb-6 mb-6">
+              <div>
+                <div className="text-arrow-gray text-sm uppercase tracking-wide mb-1">Tracking Number</div>
+                <div className="text-3xl font-bold text-amber-400 tracking-wider font-mono">{zrData.trackingNumber}</div>
+                <div className="text-gray-500 text-xs mt-1 flex items-center gap-1">
+                  <Calendar size={12} /> Created on {new Date(zrData.createdAt).toLocaleDateString()}
+                </div>
+              </div>
+              <span
+                className="inline-block px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm text-white"
+                style={{ backgroundColor: zrData.state.color ? `#${zrData.state.color}` : '#6b7280' }}
+              >
+                {zrData.state.name.replace(/_/g, ' ')}
+                {zrData.situation && <span className="ml-2 opacity-75">· {zrData.situation.name}</span>}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 hover:border-amber-600/30 transition-colors">
+                <div className="text-arrow-gray text-xs mb-1 uppercase tracking-wide">Customer</div>
+                <div className="font-semibold text-white truncate">{zrData.customer.name}</div>
+                <div className="text-sm text-amber-400 mt-1 flex items-center gap-1">
+                  <Phone size={12} /> {zrData.customer.phone.number1}
+                </div>
+              </div>
+              <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 hover:border-amber-600/30 transition-colors">
+                <div className="text-arrow-gray text-xs mb-1 uppercase tracking-wide">Shipped By</div>
+                <div className="font-semibold text-white truncate">{zrData.supplier.supplierName}</div>
+              </div>
+              <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 hover:border-amber-600/30 transition-colors">
+                <div className="text-arrow-gray text-xs mb-1 uppercase tracking-wide">Delivery</div>
+                <div className="font-semibold text-white text-sm">
+                  {zrData.deliveryAddress.city} <span className="mx-1 text-amber-400">➜</span> {zrData.deliveryAddress.district}
+                </div>
+                <div className="text-xs text-gray-500 mt-0.5">{zrData.deliveryType === 'home' ? 'Home Delivery' : 'Pickup Point'}</div>
+              </div>
+              <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 hover:border-amber-600/30 transition-colors">
+                <div className="text-arrow-gray text-xs mb-1 uppercase tracking-wide">Payment</div>
+                <div className="font-semibold text-white">{zrData.paymentMethod || 'N/A'}</div>
+              </div>
+            </div>
+
+            <div className="bg-neutral-900/50 rounded-xl p-6 border border-amber-600/20">
+              <h3 className="text-amber-400 font-bold flex items-center gap-2 mb-6 text-lg">
+                <Wallet size={20} /> Financial Details
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                <div className="flex flex-col">
+                  <span className="text-gray-400 text-xs uppercase mb-1">Total Amount (COD)</span>
+                  <span className="text-2xl font-bold text-white tracking-tight">
+                    {zrData.amount.toLocaleString()} <span className="text-sm font-normal text-gray-500">DA</span>
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-gray-400 text-xs uppercase mb-1">Delivery Fee</span>
+                  <span className="text-xl font-bold text-red-400 tracking-tight">
+                    -{zrData.deliveryPrice.toLocaleString()} <span className="text-sm font-normal text-red-400/70">DA</span>
+                  </span>
+                </div>
+                <div className="flex flex-col pt-4 sm:pt-0 sm:border-l sm:border-neutral-800 sm:pl-6">
+                  <span className="text-gray-400 text-xs uppercase mb-1 font-bold text-emerald-500">Net</span>
+                  <span className="text-3xl font-extrabold text-emerald-400 tracking-tight">
+                    {(zrData.amount - (zrData.deliveryPrice + (zrData.ReturnPrice || 0))).toLocaleString()} <span className="text-lg font-normal text-emerald-600">DA</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {zrData.description && (
+              <div className="mt-4 bg-neutral-950 p-4 rounded-xl border border-neutral-800">
+                <span className="text-arrow-gray text-xs uppercase tracking-wide">Description</span>
+                <p className="text-white mt-1">{zrData.description}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Results */}
       {data && (

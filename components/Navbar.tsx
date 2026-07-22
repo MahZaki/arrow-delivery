@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Menu, X, Box, MapPin, LayoutDashboard, DollarSign, LogIn, LogOut } from 'lucide-react';
+import { Menu, X, Box, MapPin, LayoutDashboard, DollarSign, LogIn, LogOut, Truck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const Navbar: React.FC = () => {
@@ -61,6 +61,9 @@ const Navbar: React.FC = () => {
                   <NavLink to="/finance" className={linkClasses}>
                      <DollarSign size={18} /> Finance
                   </NavLink>
+                  <NavLink to="/dashboard" className={linkClasses} onClick={() => { localStorage.setItem('arrow_carrier', 'zrexpress'); }}>
+                     <Truck size={18} /> ZR Express
+                  </NavLink>
                   <button onClick={handleLogout} className={buttonClasses}>
                      <LogOut size={18} /> Logout
                   </button>
@@ -106,6 +109,9 @@ const Navbar: React.FC = () => {
                 </NavLink>
                 <NavLink to="/finance" onClick={() => setIsOpen(false)} className={linkClasses}>
                    <DollarSign size={18} /> Finance
+                </NavLink>
+                <NavLink to="/dashboard" onClick={() => { setIsOpen(false); localStorage.setItem('arrow_carrier', 'zrexpress'); }} className={linkClasses}>
+                   <Truck size={18} /> ZR Express
                 </NavLink>
                 <button onClick={handleLogout} className={`w-full ${buttonClasses} text-left`}>
                    <LogOut size={18} /> Logout

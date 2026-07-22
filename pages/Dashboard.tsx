@@ -4,18 +4,22 @@ import { fetchOrdersFromApi, fetchArchivedFromDb, autoArchiveDisappeared, clearC
 import { Order } from '../types';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatusBadge from '../components/StatusBadge';
+import ZrDashboardContent from '../components/ZrDashboardContent';
 import { useAuth } from '../contexts/AuthContext';
+import { useCarrier } from '../contexts/CarrierContext';
 import AdminDashboardView from '../components/AdminDashboardView';
 import { 
     Package, Truck, CheckCircle, RefreshCw, Search, 
     MapPin, PauseCircle, CloudUpload, Archive,
-    RotateCcw, Plus, ChevronDown, Home, Filter, Calendar, FilePlus, Layers, List
+    RotateCcw, Plus, ChevronDown, Home, Filter, Calendar, FilePlus, Layers, List,
+    Truck as ZrIcon
 } from 'lucide-react';
 import { WILAYAS } from '../constants';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user, updateApiToken } = useAuth();
+  const { user, updateApiToken, updateZrCredentials } = useAuth();
+  const { carrier, setCarrier } = useCarrier();
   
   // State for Client Dashboard
   const [orders, setOrders] = useState<Order[]>([]);
@@ -27,6 +31,11 @@ const Dashboard: React.FC = () => {
   // Token Entry State
   const [newToken, setNewToken] = useState('');
   const [isSavingToken, setIsSavingToken] = useState(false);
+
+  // ZR Credentials Entry State
+  const [newZrTenant, setNewZrTenant] = useState('');
+  const [newZrApiKey, setNewZrApiKey] = useState('');
+  const [isSavingZr, setIsSavingZr] = useState(false);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -130,6 +139,17 @@ const Dashboard: React.FC = () => {
       }
   };
 
+  const handleSaveZrCredentials = async () => {
+      if(!newZrTenant || !newZrApiKey) return;
+      setIsSavingZr(true);
+      setError(null);
+      const success = await updateZrCredentials(newZrTenant, newZrApiKey);
+      setIsSavingZr(false);
+      if(!success) {
+          setError("Failed to save ZR credentials.");
+      }
+  };
+
   // --- Category mapping using EXACT Ecotrack API status strings ---
   // Source: /api/v1/get/orders status field values
   const CATEGORY_MAP: Record<string, string> = {
@@ -228,11 +248,54 @@ const Dashboard: React.FC = () => {
       return <AdminDashboardView />;
   }
 
-  if (loading) {
+  if (loading && carrier === 'ecotrack') {
       return <div className="min-h-screen flex items-center justify-center"><LoadingSpinner text="Loading Dashboard..." /></div>;
   }
 
-  // Token Prompt
+  // ZR Express credentials check
+  const zrCreds = user?.zr_tenant_id && user?.zr_api_key
+    ? { tenantId: user.zr_tenant_id, apiKey: user.zr_api_key }
+    : null;
+
+  // ZR mode with credentials → show ZR dashboard
+  if (carrier === 'zrexpress') {
+    if (!zrCreds) {
+      return (
+        <div className="max-w-md mx-auto mt-20 p-8 bg-arrow-dark border border-amber-600/30 rounded-2xl shadow-xl text-center">
+          <h2 className="text-2xl font-bold text-white mb-4">ZR Express Setup</h2>
+          <p className="text-gray-400 mb-2">Enter your ZR Express credentials to manage parcels.</p>
+          <p className="text-xs text-gray-600 mb-6">
+            You need a Tenant ID and API Key from the ZR Express portal.
+          </p>
+          <input
+            type="text"
+            value={newZrTenant}
+            onChange={(e) => setNewZrTenant(e.target.value)}
+            placeholder="ZR Tenant ID"
+            className="w-full bg-black border border-neutral-700 p-3 rounded-xl text-white mb-3 focus:border-amber-500 focus:outline-none"
+          />
+          <input
+            type="text"
+            value={newZrApiKey}
+            onChange={(e) => setNewZrApiKey(e.target.value)}
+            placeholder="ZR API Key"
+            className="w-full bg-black border border-neutral-700 p-3 rounded-xl text-white mb-4 focus:border-amber-500 focus:outline-none"
+          />
+          <button
+            onClick={handleSaveZrCredentials}
+            disabled={isSavingZr || !newZrTenant || !newZrApiKey}
+            className="w-full bg-amber-600 hover:bg-amber-500 text-black font-bold py-3 rounded-xl transition-colors disabled:opacity-50"
+          >
+            {isSavingZr ? 'Saving...' : 'Connect ZR Express'}
+          </button>
+          {error && <p className="text-red-400 text-sm mt-4">{error}</p>}
+        </div>
+      );
+    }
+    return <ZrDashboardContent credentials={zrCreds} />;
+  }
+
+  // Token Prompt (Ecotrack mode)
   if (!user?.api_token) {
       return (
           <div className="max-w-md mx-auto mt-20 p-8 bg-arrow-dark border border-arrow-deepGreen rounded-2xl shadow-xl text-center">
@@ -274,11 +337,36 @@ const Dashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-arrow-black pb-20">
       {/* Top Header */}
-      <div className="bg-arrow-dark/50 border-b border-arrow-deepGreen/30 sticky top-[80px] z-30 backdrop-blur-md">
+      <div className={`${carrier === 'zrexpress' ? 'bg-amber-900/10 border-b border-amber-600/30' : 'bg-arrow-dark/50 border-b border-arrow-deepGreen/30'} sticky top-[80px] z-30 backdrop-blur-md`}>
           <div className="max-w-full mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-              <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                  <Layers size={24} className="text-arrow-green" /> My Dashboard
-              </h1>
+              <div className="flex items-center gap-4">
+                  <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                      <Layers size={24} className={carrier === 'zrexpress' ? 'text-amber-400' : 'text-arrow-green'} /> My Dashboard
+                  </h1>
+                  {/* Carrier Toggle */}
+                  <div className="flex bg-neutral-900 rounded-lg border border-neutral-700 overflow-hidden">
+                      <button
+                          onClick={() => setCarrier('ecotrack')}
+                          className={`px-3 py-1.5 text-xs font-bold transition-colors ${
+                              carrier === 'ecotrack'
+                              ? 'bg-arrow-green text-black'
+                              : 'text-gray-400 hover:text-white'
+                          }`}
+                      >
+                          Arrow
+                      </button>
+                      <button
+                          onClick={() => setCarrier('zrexpress')}
+                          className={`px-3 py-1.5 text-xs font-bold transition-colors ${
+                              carrier === 'zrexpress'
+                              ? 'bg-amber-500 text-black'
+                              : 'text-gray-400 hover:text-white'
+                          }`}
+                      >
+                          ZR Express
+                      </button>
+                  </div>
+              </div>
               <div className="flex items-center gap-4">
                   {lastSync && <span className="text-xs text-gray-500 hidden md:block">Last synced: {new Date(lastSync).toLocaleString()}</span>}
                   <button
