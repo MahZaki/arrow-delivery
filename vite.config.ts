@@ -15,9 +15,9 @@ export default defineConfig(({ mode }) => {
           name: 'zr-proxy',
           configureServer(server) {
             server.middlewares.use(async (req, res, next) => {
-              if (!req.url?.startsWith('/zr/')) return next();
+              if (!req.url?.startsWith('/api/zr/')) return next();
 
-              const targetUrl = `https://api.zrexpress.app/api/v1.0${req.url.replace(/^\/zr/, '')}`;
+              const targetUrl = `https://api.zrexpress.app/api/v1.0${req.url.replace(/^\/api\/zr/, '')}`;
               console.log(`[ZR] ${req.method} ${req.url} -> ${targetUrl}`);
 
               try {

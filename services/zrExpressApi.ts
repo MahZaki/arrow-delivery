@@ -5,7 +5,7 @@ import {
   ZrCredentials
 } from '../types';
 
-const ZR_API_BASE = '/zr';
+const ZR_API_BASE = '/api/zr';
 
 const CONFIG = {
   RETRY_ATTEMPTS: 3,
