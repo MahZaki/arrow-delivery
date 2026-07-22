@@ -13,6 +13,9 @@ export default defineConfig(({ mode }) => {
             target: 'https://api.zrexpress.app',
             changeOrigin: true,
             rewrite: (p) => p.replace(/^\/zr-api/, '/api/v1.0'),
+            headers: {
+              'Origin': 'https://api.zrexpress.app',
+            },
           },
         },
       },

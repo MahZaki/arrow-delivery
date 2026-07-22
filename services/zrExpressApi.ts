@@ -82,7 +82,7 @@ async function zrRequest<T>(
   });
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
-    throw new Error(`ZR API error ${response.status}: ${errorBody || response.statusText}`);
+    throw new Error(`ZR API error ${response.status} (${response.statusText}): ${errorBody || '(no body)'} [${method} ${url}]`);
   }
   return response.json();
 }

@@ -52,7 +52,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
       setTotalCount(result.totalCount);
       setCurrentPage(result.pageNumber);
     } catch (err: any) {
-      setError(err.message || 'Failed to load parcels');
+      setError(err?.message || 'Failed to load parcels');
     } finally {
       setLoading(false);
     }
