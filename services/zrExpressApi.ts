@@ -127,42 +127,23 @@ export async function getTerritories(
   return result;
 }
 
+async function fetchAllTerritories(creds: ZrCredentials): Promise<ZrTerritory[]> {
+  const res = await getTerritories(creds, {
+    pageNumber: 1,
+    pageSize: 5000,
+    orderBy: ['code asc'],
+  });
+  return res.items;
+}
+
 export async function getAllWilayas(creds: ZrCredentials): Promise<ZrTerritory[]> {
-  const all: ZrTerritory[] = [];
-  let page = 1;
-  let hasMore = true;
-  while (hasMore) {
-    const res = await getTerritories(creds, {
-      pageNumber: page,
-      pageSize: 100,
-      orderBy: ['code asc'],
-    });
-    all.push(...res.items.filter(t => t.level === 'wilaya'));
-    hasMore = res.hasNext;
-    page++;
-  }
-  return all;
+  const all = await fetchAllTerritories(creds);
+  return all.filter(t => t.level === 'wilaya');
 }
 
 export async function getCommunesByWilaya(creds: ZrCredentials, wilayaId: string): Promise<ZrTerritory[]> {
-  const all: ZrTerritory[] = [];
-  let page = 1;
-  let hasMore = true;
-  while (hasMore) {
-    const res = await getTerritories(creds, {
-      pageNumber: page,
-      pageSize: 100,
-      orderBy: ['code asc'],
-      advancedFilter: {
-        logic: 'AND',
-        filters: [{ field: 'parentId', operator: 'equals', value: wilayaId }],
-      },
-    });
-    all.push(...res.items);
-    hasMore = res.hasNext;
-    page++;
-  }
-  return all;
+  const all = await fetchAllTerritories(creds);
+  return all.filter(t => t.parentId === wilayaId);
 }
 
 export async function getParcelStats(
