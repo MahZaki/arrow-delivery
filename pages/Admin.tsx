@@ -3,7 +3,7 @@ import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { WILAYAS } from '../constants';
-import { PricingItem } from '../types';
+import { PricingItem, UserProfile } from '../types';
 import { supabase } from '../lib/supabase';
 import { 
     Trash2, MapPin, DollarSign, Building, Loader2, Lock, Users, Save, Database, 
@@ -20,11 +20,22 @@ const Admin: React.FC = () => {
     seedPricing, seedStations
   } = useData();
   
-  const { user } = useAuth();
+  const {
+    user, isMaster,
+    createSubAccount, updateSubAccountMarkup,
+  } = useAuth();
   const navigate = useNavigate();
   
-  const [activeTab, setActiveTab] = useState<'pricing' | 'desks' | 'users'>('users');
+  const [activeTab, setActiveTab] = useState<'pricing' | 'desks' | 'users' | 'subs'>('users');
   const [processingId, setProcessingId] = useState<number | string | null>(null);
+
+  // Sub-account state
+  const [subEmail, setSubEmail] = useState('');
+  const [subPassword, setSubPassword] = useState('');
+  const [subMarkupType, setSubMarkupType] = useState<'flat' | 'percentage'>('flat');
+  const [subMarkupValue, setSubMarkupValue] = useState(0);
+  const [creatingSub, setCreatingSub] = useState(false);
+  const [subAccounts, setSubAccounts] = useState<UserProfile[]>([]);
 
   // Custom UI State
   const [modalOpen, setModalOpen] = useState(false);
@@ -36,6 +47,12 @@ const Admin: React.FC = () => {
           refreshUsers();
       }
   }, [user]);
+
+  useEffect(() => {
+    if (!isMaster) return;
+    supabase.from('profiles').select('*').eq('master_id', user!.id).order('created_at', { ascending: false })
+      .then(({ data }) => { if (data) setSubAccounts(data as UserProfile[]); });
+  }, [isMaster, user]);
 
   // Toast Timer
   useEffect(() => {
@@ -289,6 +306,14 @@ const Admin: React.FC = () => {
         >
           <Building size={20} /> Stations
         </button>
+        {isMaster && (
+          <button
+            onClick={() => setActiveTab('subs')}
+            className={`px-6 py-3 font-bold flex items-center gap-2 transition-colors ${activeTab === 'subs' ? 'text-amber-400 border-b-2 border-amber-400' : 'text-gray-400 hover:text-white'}`}
+          >
+            <Users size={20} /> Sub-Accounts
+          </button>
+        )}
       </div>
 
       {/* Users Tab */}
@@ -503,6 +528,90 @@ const Admin: React.FC = () => {
                     </tbody>
                 </table>
             </div>
+        </div>
+      )}
+
+      {/* Sub-Accounts Tab */}
+      {activeTab === 'subs' && isMaster && (
+        <div className="animate-fade-in bg-arrow-dark border border-amber-600/30 rounded-xl overflow-hidden shadow-xl p-6">
+          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <Users size={20} className="text-amber-400" /> Manage Sub-Accounts
+          </h2>
+
+          {/* Create Sub-Account Form */}
+          <div className="mb-8 p-6 bg-neutral-900/50 rounded-xl border border-amber-600/20">
+            <h3 className="text-sm font-bold text-amber-400 uppercase mb-4">Create New Sub-Account</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <input type="email" value={subEmail} onChange={e => setSubEmail(e.target.value)}
+                placeholder="Email" className="bg-black border border-neutral-700 rounded-xl px-4 py-2.5 text-white focus:border-amber-500 focus:outline-none" />
+              <input type="password" value={subPassword} onChange={e => setSubPassword(e.target.value)}
+                placeholder="Password" className="bg-black border border-neutral-700 rounded-xl px-4 py-2.5 text-white focus:border-amber-500 focus:outline-none" />
+              <select value={subMarkupType} onChange={e => setSubMarkupType(e.target.value as 'flat' | 'percentage')}
+                className="bg-black border border-neutral-700 rounded-xl px-4 py-2.5 text-white focus:border-amber-500 focus:outline-none">
+                <option value="flat">Flat (DA)</option>
+                <option value="percentage">Percentage (%)</option>
+              </select>
+              <input type="number" value={subMarkupValue} onChange={e => setSubMarkupValue(Number(e.target.value))}
+                placeholder={subMarkupType === 'flat' ? 'Extra DA per parcel' : 'Extra % per parcel'}
+                className="bg-black border border-neutral-700 rounded-xl px-4 py-2.5 text-white focus:border-amber-500 focus:outline-none" />
+              <button onClick={async () => {
+                if (!subEmail || !subPassword) return;
+                setCreatingSub(true);
+                const result = await createSubAccount(subEmail, subPassword, subMarkupType, subMarkupValue);
+                setCreatingSub(false);
+                if (result.success) {
+                  showToast('success', 'Sub-account created!');
+                  setSubEmail(''); setSubPassword(''); setSubMarkupValue(0);
+                  const { data } = await supabase.from('profiles').select('*').eq('master_id', user!.id);
+                  if (data) setSubAccounts(data as UserProfile[]);
+                } else {
+                  showToast('error', result.error || 'Failed to create');
+                }
+              }} disabled={creatingSub || !subEmail || !subPassword}
+                className="bg-amber-600 hover:bg-amber-500 text-black font-bold px-6 py-2.5 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                {creatingSub ? <Loader2 className="animate-spin" size={18} /> : <Users size={18} />}
+                {creatingSub ? 'Creating...' : 'Create'}
+              </button>
+            </div>
+          </div>
+
+          {/* Sub-Accounts Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-neutral-950 text-amber-400">
+                <tr>
+                  <th className="px-4 py-3">Email</th>
+                  <th className="px-4 py-3">Markup Type</th>
+                  <th className="px-4 py-3">Markup Value</th>
+                  <th className="px-4 py-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-amber-600/20">
+                {subAccounts.map(sa => (
+                  <tr key={sa.id} className="hover:bg-neutral-900/50">
+                    <td className="p-4 text-white">{sa.email}</td>
+                    <td className="p-4">
+                      <select defaultValue={sa.markup_type || 'flat'} onChange={e => updateSubAccountMarkup(sa.id, e.target.value as 'flat' | 'percentage', sa.markup_value || 0)}
+                        className="bg-black border border-neutral-700 rounded px-3 py-1.5 text-white text-sm focus:border-amber-500 focus:outline-none">
+                        <option value="flat">Flat</option>
+                        <option value="percentage">Percentage</option>
+                      </select>
+                    </td>
+                    <td className="p-4">
+                      <input type="number" defaultValue={sa.markup_value || 0} onBlur={e => updateSubAccountMarkup(sa.id, sa.markup_type as 'flat' | 'percentage' || 'flat', Number(e.target.value))}
+                        className="bg-black border border-neutral-700 rounded px-3 py-1.5 text-white w-24 text-sm focus:border-amber-500 focus:outline-none" />
+                    </td>
+                    <td className="p-4">
+                      <span className="text-xs text-gray-500">{sa.markup_type === 'flat' ? 'DA' : '%'}</span>
+                    </td>
+                  </tr>
+                ))}
+                {subAccounts.length === 0 && (
+                  <tr><td colSpan={4} className="p-8 text-center text-gray-500">No sub-accounts yet. Create one above.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

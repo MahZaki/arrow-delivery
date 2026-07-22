@@ -6,11 +6,14 @@ interface AuthContextType {
   user: UserProfile | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isMaster: boolean;
   login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   signup: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   updateApiToken: (token: string) => Promise<boolean>;
   updateZrCredentials: (tenantId: string, apiKey: string) => Promise<boolean>;
+  createSubAccount: (email: string, password: string, markupType: 'flat' | 'percentage', markupValue: number) => Promise<{ success: boolean; error?: string }>;
+  updateSubAccountMarkup: (subId: string, markupType: 'flat' | 'percentage', markupValue: number) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -97,12 +100,44 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { success: false, error: error.message };
     }
     
-    // Create profile entry immediately
     if (data.user) {
         await supabase.from('profiles').insert([{ id: data.user.id, email, role: 'client' }]);
     }
 
     return { success: true };
+  };
+
+  const isMaster = !!(user?.role === 'admin' && !user?.master_id);
+
+  const createSubAccount = async (
+    email: string, password: string,
+    markupType: 'flat' | 'percentage', markupValue: number
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!isMaster) return { success: false, error: 'Only the master account can create sub-accounts.' };
+
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) return { success: false, error: error.message };
+
+    if (data.user) {
+      await supabase.from('profiles').insert([{
+        id: data.user.id, email, role: 'client',
+        master_id: user!.id,
+        markup_type: markupType, markup_value: markupValue,
+      }]);
+    }
+    return { success: true };
+  };
+
+  const updateSubAccountMarkup = async (
+    subId: string,
+    markupType: 'flat' | 'percentage', markupValue: number
+  ): Promise<boolean> => {
+    if (!isMaster) return false;
+    const { error } = await supabase
+      .from('profiles')
+      .update({ markup_type: markupType, markup_value: markupValue })
+      .eq('id', subId);
+    return !error;
   };
 
   const logout = async () => {
@@ -144,11 +179,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     user,
     isAuthenticated: !!user, 
     isLoading,
+    isMaster,
     login,
     signup,
     logout,
     updateApiToken,
-    updateZrCredentials
+    updateZrCredentials,
+    createSubAccount,
+    updateSubAccountMarkup,
   }), [user, isLoading]);
 
   return (

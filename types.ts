@@ -360,4 +360,32 @@ export interface UserProfile {
   api_token: string | null;
   zr_tenant_id?: string | null;
   zr_api_key?: string | null;
+  master_id?: string | null;
+  markup_type?: 'flat' | 'percentage';
+  markup_value?: number;
+}
+
+export interface ResellerParcel {
+  id: string;
+  profile_id: string;
+  zr_parcel_id: string;
+  tracking_number: string;
+  cod_amount: number;
+  zr_delivery_price: number;
+  my_delivery_price: number;
+  zr_return_price: number;
+  state: string;
+  delivered_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Transaction {
+  id: string;
+  profile_id: string;
+  type: 'delivery_fee' | 'return_fee' | 'deposit' | 'withdrawal' | 'adjustment';
+  amount: number;
+  ref_parcel_id: string | null;
+  description: string | null;
+  created_at: string;
 }
