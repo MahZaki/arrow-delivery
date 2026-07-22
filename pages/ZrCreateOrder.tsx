@@ -108,7 +108,7 @@ const ZrCreateOrder: React.FC = () => {
             productName: p.name,
             unitPrice: parseFloat(p.price) || 0,
             quantity: parseInt(p.quantity) || 1,
-            stockType: 'local',
+            stockType: 'none',
           })),
         deliveryType,
         description,
