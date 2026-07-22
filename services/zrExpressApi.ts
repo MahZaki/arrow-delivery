@@ -154,7 +154,8 @@ export async function getCommunesByWilaya(creds: ZrCredentials, wilayaId: string
       pageSize: 100,
       orderBy: ['code asc'],
       advancedFilter: {
-        filters: [{ field: 'parentId', operator: 'eq', value: wilayaId }],
+        logic: 'AND',
+        filters: [{ field: 'parentId', operator: 'equals', value: wilayaId }],
       },
     });
     all.push(...res.items);
