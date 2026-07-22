@@ -14,11 +14,15 @@ export default defineConfig(({ mode }) => {
         {
           name: 'zr-proxy',
           configureServer(server) {
-            server.middlewares.use('/zr/', async (req, res) => {
-              const targetUrl = `https://api.zrexpress.app/api/v1.0${req.url!.replace(/^\/zr/, '')}`;
+            server.middlewares.use(async (req, res, next) => {
+              if (!req.url?.startsWith('/zr/')) return next();
+
+              const targetUrl = `https://api.zrexpress.app/api/v1.0${req.url.replace(/^\/zr/, '')}`;
+              console.log(`[ZR] ${req.method} ${req.url} -> ${targetUrl}`);
+
               try {
                 const headers: Record<string, string> = {
-                  'Accept': 'application/json',
+                  Accept: 'application/json',
                   'Content-Type': 'application/json',
                 };
                 if (req.headers['x-tenant']) headers['X-Tenant'] = req.headers['x-tenant'] as string;
@@ -35,11 +39,13 @@ export default defineConfig(({ mode }) => {
                 });
 
                 res.statusCode = proxyRes.status;
-                res.statusMessage = proxyRes.statusText;
                 proxyRes.headers.forEach((value, key) => res.setHeader(key, value));
+
                 const text = await proxyRes.text();
+                console.log(`[ZR] Response: ${proxyRes.status} (${text.slice(0, 200)})`);
                 res.end(text);
               } catch (err: any) {
+                console.error(`[ZR] Error: ${err.message}`);
                 res.statusCode = 502;
                 res.end(`ZR proxy error: ${err.message}`);
               }
