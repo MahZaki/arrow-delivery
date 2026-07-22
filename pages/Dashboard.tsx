@@ -268,15 +268,7 @@ const Dashboard: React.FC = () => {
 
   // --- Render ---
 
-  if (user?.role === 'admin') {
-      return <AdminDashboardView />;
-  }
-
-  if (loading && carrier === 'ecotrack') {
-      return <div className="min-h-screen flex items-center justify-center"><LoadingSpinner text="Loading Dashboard..." /></div>;
-  }
-
-  // ZR mode → show ZR dashboard
+  // ZR mode → show ZR dashboard (master sees all, sub-accounts see own)
   if (carrier === 'zrexpress') {
     if (resolvingMasterCreds) {
       return <LoadingSpinner />;
@@ -326,6 +318,15 @@ const Dashboard: React.FC = () => {
       return <ZrSubAccountContent profileId={user.id} />;
     }
     return <ZrDashboardContent credentials={zrCreds} />;
+  }
+
+  // Ecotrack mode: admin sees admin panel
+  if (user?.role === 'admin') {
+      return <AdminDashboardView />;
+  }
+
+  if (loading && carrier === 'ecotrack') {
+      return <div className="min-h-screen flex items-center justify-center"><LoadingSpinner text="Loading Dashboard..." /></div>;
   }
 
   // Token Prompt (Ecotrack mode)
