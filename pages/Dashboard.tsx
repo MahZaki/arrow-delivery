@@ -5,6 +5,7 @@ import { Order, ZrCredentials } from '../types';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatusBadge from '../components/StatusBadge';
 import ZrDashboardContent from '../components/ZrDashboardContent';
+import ZrSubAccountContent from '../components/ZrSubAccountContent';
 import { useAuth } from '../contexts/AuthContext';
 import { useCarrier } from '../contexts/CarrierContext';
 import AdminDashboardView from '../components/AdminDashboardView';
@@ -320,6 +321,9 @@ const Dashboard: React.FC = () => {
           {error && <p className="text-red-400 text-sm mt-4">{error}</p>}
         </div>
       );
+    }
+    if (user?.master_id) {
+      return <ZrSubAccountContent profileId={user.id} />;
     }
     return <ZrDashboardContent credentials={zrCreds} />;
   }

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ZrCredentials, ZrTerritory, ZrCreateParcelRequest } from '../types';
-import { createParcel, getAllWilayas, getCommunesByWilaya } from '../services/zrExpressApi';
+import { createParcel, getParcelById, getAllWilayas, getCommunesByWilaya } from '../services/zrExpressApi';
+import { saveParcel } from '../services/resellerApi';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { ArrowLeft, Plus, Trash2, Package, MapPin, Phone, User, Tag, Truck, Home, Save } from 'lucide-react';
@@ -118,7 +119,18 @@ const ZrCreateOrder: React.FC = () => {
       };
 
       const result = await createParcel(credentials, payload);
-      setSuccess(`Parcel created successfully! ID: ${result.id}`);
+      const parcelDetails = await getParcelById(credentials, result.id);
+      if (user) {
+        await saveParcel(
+          user.id,
+          result.id,
+          parcelDetails.trackingNumber,
+          parseFloat(amount) || 0,
+          0, 0,
+          parcelDetails.state.name
+        );
+      }
+      setSuccess(`Parcel created successfully! Tracking: ${parcelDetails.trackingNumber}`);
       setTimeout(() => navigate('/dashboard'), 2000);
     } catch (err: any) {
       setError(err.message || 'Failed to create parcel');

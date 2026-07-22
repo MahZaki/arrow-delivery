@@ -106,6 +106,13 @@ export async function createParcel(
   return zrRequest<ZrCreateParcelResponse>(creds, 'POST', '/parcels', data);
 }
 
+export async function getParcelById(
+  creds: ZrCredentials,
+  id: string
+): Promise<ZrParcel> {
+  return zrRequest<ZrParcel>(creds, 'GET', `/parcels/${encodeURIComponent(id)}`);
+}
+
 export async function getParcelByTracking(
   creds: ZrCredentials,
   trackingNumber: string
