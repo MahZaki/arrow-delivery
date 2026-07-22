@@ -128,12 +128,20 @@ export async function getTerritories(
 }
 
 async function fetchAllTerritories(creds: ZrCredentials): Promise<ZrTerritory[]> {
-  const res = await getTerritories(creds, {
-    pageNumber: 1,
-    pageSize: 5000,
-    orderBy: ['code asc'],
-  });
-  return res.items;
+  const all: ZrTerritory[] = [];
+  let page = 1;
+  let hasMore = true;
+  while (hasMore) {
+    const res = await getTerritories(creds, {
+      pageNumber: page,
+      pageSize: 1000,
+      orderBy: ['code asc'],
+    });
+    all.push(...res.items);
+    hasMore = res.hasNext;
+    page++;
+  }
+  return all;
 }
 
 export async function getAllWilayas(creds: ZrCredentials): Promise<ZrTerritory[]> {
