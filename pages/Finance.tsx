@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useCarrier } from '../contexts/CarrierContext';
 import { fetchOrdersFromApi, fetchArchivedFromDb } from '../services/api';
-import { Order } from '../types';
+import { Order, Transaction } from '../types';
+import { getTransactions, getBalance, addTransaction } from '../services/transactionApi';
 import { WILAYAS, STATUS_TRANSLATIONS } from '../constants';
 import {
   DollarSign, TrendingUp, CreditCard, ShieldAlert,
   ArrowUpRight, BarChart3, PieChart, Calendar,
-  Download, ArrowLeft, RefreshCw, Search, MapPin
+  Download, ArrowLeft, RefreshCw, Search, MapPin,
+  Wallet, Plus, Minus
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -15,6 +18,7 @@ type TimePeriod = '7d' | '30d' | 'all';
 
 const Finance: React.FC = () => {
   const { user } = useAuth();
+  const { carrier } = useCarrier();
   const navigate = useNavigate();
 
   const [orders, setOrders] = useState<Order[]>([]);
@@ -23,6 +27,14 @@ const Finance: React.FC = () => {
   const [period, setPeriod] = useState<TimePeriod>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Reseller wallet state
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [balance, setBalanceState] = useState(0);
+  const [walletLoading, setWalletLoading] = useState(true);
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [processingDeposit, setProcessingDeposit] = useState(false);
 
   const loadFinanceData = async (userId: string, token: string | null) => {
     setLoading(true);
@@ -61,6 +73,45 @@ const Finance: React.FC = () => {
     if (!user) return;
     loadFinanceData(user.id, user.api_token);
   }, [user]);
+
+  // Reseller wallet: load transactions and balance
+  const loadWallet = async () => {
+    if (!user) return;
+    setWalletLoading(true);
+    try {
+      const [txns, bal] = await Promise.all([
+        getTransactions(user.id),
+        getBalance(user.id),
+      ]);
+      setTransactions(txns);
+      setBalanceState(bal);
+    } catch (err: any) {
+      console.error('Failed to load wallet:', err);
+    } finally {
+      setWalletLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (carrier === 'zrexpress' && user) {
+      loadWallet();
+    }
+  }, [carrier, user]);
+
+  const handleDeposit = async () => {
+    if (!user || !depositAmount || parseFloat(depositAmount) <= 0) return;
+    setProcessingDeposit(true);
+    try {
+      await addTransaction(user.id, 'deposit', parseFloat(depositAmount), undefined, 'Wallet deposit');
+      setDepositAmount('');
+      setShowDeposit(false);
+      await loadWallet();
+    } catch (err: any) {
+      setError(err.message || 'Failed to process deposit');
+    } finally {
+      setProcessingDeposit(false);
+    }
+  };
 
   // Filter orders based on period and search query
   const filteredOrders = React.useMemo(() => {
@@ -244,6 +295,123 @@ const Finance: React.FC = () => {
   if (!user) {
     navigate('/login');
     return null;
+  }
+
+  // ZR Express → show reseller wallet
+  if (carrier === 'zrexpress') {
+    return (
+      <div className="min-h-screen bg-gray-950 text-gray-100 p-4 md:p-8">
+        <div className="max-w-5xl mx-auto space-y-8">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors mb-2">
+                <ArrowLeft size={16} /> Back to Dashboard
+              </button>
+              <h1 className="text-3xl font-extrabold text-white flex items-center gap-3">
+                <Wallet className="text-amber-400" size={32} />
+                My Wallet
+              </h1>
+            </div>
+            <button onClick={loadWallet} disabled={walletLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-amber-700 rounded-lg text-sm font-medium transition-all disabled:opacity-50">
+              <RefreshCw size={16} className={walletLoading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+          </div>
+
+          {error && (
+            <div className="bg-red-950/40 border border-red-800 rounded-xl p-4 flex items-center gap-3 text-red-300 text-sm">
+              <ShieldAlert size={18} /> {error}
+            </div>
+          )}
+
+          {/* Balance Card */}
+          <div className="bg-gradient-to-br from-neutral-900 to-gray-950 border border-amber-600/30 rounded-2xl p-8">
+            <p className="text-gray-400 text-sm font-medium uppercase tracking-wider mb-1">Current Balance</p>
+            <p className={`text-4xl font-black ${balance >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
+              {balance.toLocaleString()} DA
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => { setShowDeposit(true); setError(null); }}
+                className="flex items-center gap-2 bg-amber-600 hover:bg-amber-500 text-black px-5 py-2.5 rounded-xl font-bold transition-colors">
+                <Plus size={18} /> Deposit
+              </button>
+            </div>
+          </div>
+
+          {/* Deposit Form */}
+          {showDeposit && (
+            <div className="bg-neutral-900 border border-amber-600/30 rounded-2xl p-6">
+              <h3 className="text-lg font-bold text-white mb-4">Add Funds</h3>
+              <div className="flex gap-3 items-end">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500 uppercase mb-1 block">Amount (DA)</label>
+                  <input type="number" value={depositAmount} onChange={e => setDepositAmount(e.target.value)}
+                    className="w-full bg-black border border-neutral-700 text-white px-4 py-2.5 rounded-xl focus:border-amber-500 focus:outline-none"
+                    placeholder="10000" min="1" />
+                </div>
+                <button onClick={handleDeposit} disabled={processingDeposit || !depositAmount}
+                  className="bg-amber-600 hover:bg-amber-500 text-black px-6 py-2.5 rounded-xl font-bold transition-colors disabled:opacity-50">
+                  {processingDeposit ? 'Processing...' : 'Confirm'}
+                </button>
+                <button onClick={() => setShowDeposit(false)}
+                  className="px-4 py-2.5 text-gray-400 hover:text-white transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Transaction History */}
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
+            <div className="p-5 border-b border-neutral-800">
+              <h2 className="text-lg font-bold text-white">Transaction History</h2>
+            </div>
+            {walletLoading ? (
+              <div className="p-10 text-center text-gray-500"><RefreshCw size={24} className="animate-spin mx-auto mb-2" />Loading...</div>
+            ) : transactions.length === 0 ? (
+              <div className="p-10 text-center text-gray-500">No transactions yet.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-neutral-950">
+                    <tr>
+                      {['Type', 'Amount', 'Description', 'Date'].map(h => (
+                        <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-800">
+                    {transactions.map(tx => (
+                      <tr key={tx.id} className="hover:bg-neutral-800/20 transition-colors">
+                        <td className="px-5 py-3.5">
+                          <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                            tx.type === 'deposit' ? 'bg-green-950/40 text-green-400 border border-green-800/40' :
+                            tx.type === 'withdrawal' ? 'bg-red-950/40 text-red-400 border border-red-800/40' :
+                            tx.type === 'delivery_fee' ? 'bg-blue-950/40 text-blue-400 border border-blue-800/40' :
+                            tx.type === 'return_fee' ? 'bg-orange-950/40 text-orange-400 border border-orange-800/40' :
+                            'bg-gray-800 text-gray-400'
+                          }`}>
+                            {tx.type.replace(/_/g, ' ')}
+                          </span>
+                        </td>
+                        <td className={`px-5 py-3.5 font-mono font-bold ${
+                          tx.amount >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {tx.amount >= 0 ? '+' : ''}{tx.amount.toLocaleString()} DA
+                        </td>
+                        <td className="px-5 py-3.5 text-gray-400 text-xs">{tx.description || '—'}</td>
+                        <td className="px-5 py-3.5 text-gray-500 text-xs">{new Date(tx.created_at).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

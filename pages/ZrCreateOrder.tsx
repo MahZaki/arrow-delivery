@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ZrCredentials, ZrTerritory, ZrCreateParcelRequest } from '../types';
 import { createParcel, getParcelById, getDeliveryRate, getAllWilayas, getCommunesByWilaya } from '../services/zrExpressApi';
 import { saveParcel } from '../services/resellerApi';
+import { addTransaction } from '../services/transactionApi';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { ArrowLeft, Plus, Trash2, Package, MapPin, Phone, User, Tag, Truck, Home, Save } from 'lucide-react';
@@ -158,6 +159,9 @@ const ZrCreateOrder: React.FC = () => {
           deliveryRate || 0, myDeliveryPrice || 0,
           parcelDetails.state.name
         );
+        if (user.master_id && myDeliveryPrice) {
+          await addTransaction(user.id, 'delivery_fee', -myDeliveryPrice, result.id, parcelDetails.trackingNumber);
+        }
       }
       setSuccess(`Parcel created successfully! Tracking: ${parcelDetails.trackingNumber}`);
       setTimeout(() => navigate('/dashboard'), 2000);
