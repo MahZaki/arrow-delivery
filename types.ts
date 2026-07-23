@@ -283,7 +283,7 @@ export interface ZrCreateParcelRequest {
       number3?: string;
     };
   };
-  deliveryAddress?: {
+  deliveryAddress: {
     cityTerritoryId: string;
     districtTerritoryId: string;
     street?: string;
