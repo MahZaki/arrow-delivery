@@ -1,11 +1,7 @@
 -- Phase 2C: Financial System — Sub-account payouts
 -- Run this in Supabase SQL Editor
 
--- 1. Add settlement tracking to reseller_parcels
-ALTER TABLE reseller_parcels ADD COLUMN IF NOT EXISTS settled BOOLEAN DEFAULT false;
-ALTER TABLE reseller_parcels ADD COLUMN IF NOT EXISTS payout_id UUID REFERENCES sub_account_payouts(id);
-
--- 2. Sub-account payouts (master generates these to sub-accounts)
+-- 1. Create sub_account_payouts first (needed for FK reference)
 CREATE TABLE IF NOT EXISTS sub_account_payouts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   sub_account_id UUID REFERENCES profiles(id) NOT NULL,
@@ -16,6 +12,10 @@ CREATE TABLE IF NOT EXISTS sub_account_payouts (
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- 2. Add settlement tracking to reseller_parcels
+ALTER TABLE reseller_parcels ADD COLUMN IF NOT EXISTS settled BOOLEAN DEFAULT false;
+ALTER TABLE reseller_parcels ADD COLUMN IF NOT EXISTS payout_id UUID REFERENCES sub_account_payouts(id);
 
 -- 3. Payout-parcel junction (which parcels are in which payout)
 CREATE TABLE IF NOT EXISTS payout_parcels (

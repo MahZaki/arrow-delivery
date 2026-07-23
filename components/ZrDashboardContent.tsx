@@ -8,13 +8,15 @@ import {
   createParcelModificationRequest, createParcel, getAllWilayas,
   getCommunesByWilaya, getSupplierBalance
 } from '../services/zrExpressApi';
+import { getAllResellerParcelsForMaster } from '../services/resellerApi';
+import { useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from './LoadingSpinner';
 import {
   RefreshCw, Search,
   Plus, ChevronDown, Calendar, Layers, List,
   X, Printer, Edit3, Trash2, CheckSquare, Square,
   RotateCcw, ArrowLeftRight, FileEdit, Upload, FileText,
-  CheckCircle, AlertTriangle, Building2
+  CheckCircle, AlertTriangle, Building2, User, Filter
 } from 'lucide-react';
 
 interface ZrDashboardContentProps {
@@ -25,6 +27,7 @@ const PAGE_SIZE = 15;
 
 const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [parcels, setParcels] = useState<ZrParcel[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -60,6 +63,8 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
   const [editPhone, setEditPhone] = useState('');
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [ownerMap, setOwnerMap] = useState<Map<string, { email: string; role: string }>>(new Map());
+  const [subAccountFilter, setSubAccountFilter] = useState<string>('all');
   const addMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -103,6 +108,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
       clearZrCache();
       await fetchParcels(currentPage);
       fetchTreasury();
+      fetchOwners();
     } catch (err: any) {
       setError(`Refresh failed: ${err.message || 'Connection error.'}`);
     } finally {
@@ -118,6 +124,27 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
   };
 
   useEffect(() => { fetchTreasury(); }, [credentials.tenantId, credentials.apiKey]);
+
+  const fetchOwners = async () => {
+    if (!user?.id) return;
+    try {
+      const resellerParcels = await getAllResellerParcelsForMaster(user.id);
+      const map = new Map<string, { email: string; role: string }>();
+      for (const rp of resellerParcels) {
+        if (rp.tracking_number) {
+          map.set(rp.tracking_number, {
+            email: rp.owner_email || 'Unknown',
+            role: rp.owner_role || 'client',
+          });
+        }
+      }
+      setOwnerMap(map);
+    } catch (err) {
+      console.warn('Failed to fetch parcel owners:', err);
+    }
+  };
+
+  useEffect(() => { fetchOwners(); }, [user?.id]);
 
   const allSelected = useMemo(() =>
     currentParcels.length > 0 && currentParcels.every(p => selectedIds.has(p.id)),
@@ -232,8 +259,20 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
     setBulkActionLoading(false);
   };
 
+  const subAccountOptions = useMemo(() => {
+    const emails = new Set<string>();
+    for (const owner of ownerMap.values()) {
+      emails.add(owner.email);
+    }
+    return Array.from(emails).sort();
+  }, [ownerMap]);
+
   const filteredParcels = useMemo(() => {
     return parcels.filter(p => {
+      const owner = ownerMap.get(p.trackingNumber);
+      if (subAccountFilter !== 'all') {
+        if (!owner || owner.email !== subAccountFilter) return false;
+      }
       const matchesSearch =
         p.trackingNumber.toLowerCase().includes(search.toLowerCase()) ||
         p.customer.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -246,7 +285,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
       }
       return matchesSearch && matchesDate;
     });
-  }, [parcels, search, dateFrom, dateTo]);
+  }, [parcels, search, dateFrom, dateTo, ownerMap, subAccountFilter]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
   const currentParcels = filteredParcels;
@@ -325,6 +364,23 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
               className="w-full bg-neutral-900 border border-neutral-700 text-white pl-10 pr-4 py-2.5 rounded-xl focus:border-amber-500 focus:outline-none"
             />
           </div>
+
+          {subAccountOptions.length > 0 && (
+            <div className="relative">
+              <Filter className="absolute left-3 top-3 text-gray-500" size={16} />
+              <select
+                value={subAccountFilter}
+                onChange={(e) => setSubAccountFilter(e.target.value)}
+                className="bg-neutral-900 border border-neutral-700 text-white pl-10 pr-8 py-2.5 rounded-xl focus:border-amber-500 focus:outline-none text-sm appearance-none cursor-pointer min-w-[180px]"
+              >
+                <option value="all">All Sub-Accounts</option>
+                {subAccountOptions.map(email => (
+                  <option key={email} value={email}>{email}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-3 text-gray-500 pointer-events-none" size={16} />
+            </div>
+          )}
 
           <div className="flex gap-2">
             <div className="relative">
@@ -419,6 +475,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                   </th>
                   <th className="p-4 font-semibold">Tracking</th>
                   <th className="p-4 font-semibold">Customer</th>
+                  <th className="p-4 font-semibold">Sub-Account</th>
                   <th className="p-4 font-semibold">State</th>
                   <th className="p-4 font-semibold">Delivery</th>
                   <th className="p-4 font-semibold">Amount</th>
@@ -442,6 +499,18 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                       <td className="p-4">
                         <div className="text-white font-medium">{parcel.customer.name}</div>
                         <div className="text-gray-500 text-xs mt-0.5">{parcel.customer.phone.number1}</div>
+                      </td>
+                      <td className="p-4">
+                        {(() => {
+                          const owner = ownerMap.get(parcel.trackingNumber);
+                          if (!owner) return <span className="text-gray-600 text-xs">—</span>;
+                          return (
+                            <span className={`inline-flex items-center gap-1 text-xs font-medium ${owner.role === 'admin' ? 'text-amber-400' : 'text-blue-400'}`}>
+                              <User size={12} />
+                              {owner.email}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="p-4">
                         <span
@@ -534,7 +603,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={9} className="p-12 text-center text-gray-500">
+                    <td colSpan={10} className="p-12 text-center text-gray-500">
                       {loading ? 'Loading...' : 'No parcels found.'}
                     </td>
                   </tr>
