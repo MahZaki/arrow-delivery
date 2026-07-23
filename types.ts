@@ -662,6 +662,65 @@ export interface ZrCreateModificationRequest {
 }
 
 // ============================================================================
+// Phase 2C: Treasury / Supplier Payments
+// ============================================================================
+
+export interface ZrSupplierPaymentTransaction {
+  id: string;
+  amount: number;
+  comment?: string;
+  supplier?: { supplierId: string; name: string };
+  parcel?: {
+    parcelId: string;
+    trackingNumber: string;
+    customerFullName: string;
+    description: string;
+    deliveryPrice: number;
+    isExchange: boolean;
+    isFree: boolean;
+    createdAt: string;
+    cashReceiptId?: string | null;
+  };
+}
+
+export interface ZrSupplierPayment {
+  id: string;
+  supplierId: string;
+  amount: number;
+  costService?: { storage: number; labelling: number };
+  createdAt: string;
+  cashDrawer?: { id: string; firstName: string; lastName: string };
+  referenceId: string;
+  status: string;
+  transactions?: ZrSupplierPaymentTransaction[];
+}
+
+export interface ZrSupplierPaymentSearchRequest {
+  pageNumber: number;
+  pageSize: number;
+  orderBy?: string[];
+  keyword?: string;
+  includeTransactions?: boolean;
+}
+
+export interface ZrSupplierPaymentSearchResponse {
+  items: ZrSupplierPayment[];
+  pageNumber: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface ZrSupplierBalance {
+  balance: number;
+  pendingAmount?: number;
+  totalCollected?: number;
+  totalFees?: number;
+}
+
+// ============================================================================
 // User & Reseller types
 // ============================================================================
 

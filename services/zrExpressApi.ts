@@ -15,6 +15,8 @@ import {
   ZrCreateRefundRequest,
   ZrCreateExchangeRequest, ZrCreateExchangeResponse,
   ZrCreateModificationRequest,
+  ZrSupplierPayment, ZrSupplierPaymentSearchRequest, ZrSupplierPaymentSearchResponse,
+  ZrSupplierBalance,
 } from '../types';
 
 const ZR_API_BASE = '/api/zr';
@@ -367,4 +369,41 @@ export async function createParcelModificationRequest(
   data: ZrCreateModificationRequest
 ): Promise<ZrCreateParcelResponse> {
   return zrRequest<ZrCreateParcelResponse>(creds, 'POST', '/parcel-modification-requests', data);
+}
+
+// ============================================================================
+// Phase 2C: Treasury / Supplier Payments
+// ============================================================================
+
+export async function getSupplierBalance(
+  creds: ZrCredentials
+): Promise<ZrSupplierBalance> {
+  return zrRequest<ZrSupplierBalance>(creds, 'GET', '/supplier-payment/supplier-balance');
+}
+
+export async function searchSupplierPayments(
+  creds: ZrCredentials,
+  params: ZrSupplierPaymentSearchRequest
+): Promise<ZrSupplierPaymentSearchResponse> {
+  return zrRequest<ZrSupplierPaymentSearchResponse>(creds, 'POST', '/supplier-payment/search', params);
+}
+
+export async function getSupplierPaymentDetails(
+  creds: ZrCredentials,
+  paymentId: string,
+  includeTransactions: boolean = true
+): Promise<ZrSupplierPayment> {
+  return zrRequest<ZrSupplierPayment>(creds, 'POST', `/supplier-payment/${paymentId}/details`, {
+    id: paymentId,
+    includeTransactions,
+  });
+}
+
+export async function acceptSupplierPayment(
+  creds: ZrCredentials,
+  supplierPaymentId: string
+): Promise<{ id: string }> {
+  return zrRequest<{ id: string }>(creds, 'PUT', `/supplier-payment/${supplierPaymentId}`, {
+    supplierPaymentId,
+  });
 }

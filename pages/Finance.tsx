@@ -3,21 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCarrier } from '../contexts/CarrierContext';
 import { fetchOrdersFromApi, fetchArchivedFromDb } from '../services/api';
-import { Order, Transaction } from '../types';
+import { Order, Transaction, ZrCredentials, ZrSupplierPayment, ZrSupplierBalance } from '../types';
 import { getTransactions, getBalance, addTransaction } from '../services/transactionApi';
+import { getSupplierBalance, searchSupplierPayments, acceptSupplierPayment } from '../services/zrExpressApi';
 import { WILAYAS, STATUS_TRANSLATIONS } from '../constants';
 import {
   DollarSign, TrendingUp, CreditCard, ShieldAlert,
   ArrowUpRight, BarChart3, PieChart, Calendar,
   Download, ArrowLeft, RefreshCw, Search, MapPin,
-  Wallet, Plus, Minus
+  Wallet, Plus, Minus, Building2, CheckCircle
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 type TimePeriod = '7d' | '30d' | 'all';
 
 const Finance: React.FC = () => {
-  const { user } = useAuth();
+  const { user, resolveZrCredentials, isMaster } = useAuth();
   const { carrier } = useCarrier();
   const navigate = useNavigate();
 
@@ -35,6 +36,13 @@ const Finance: React.FC = () => {
   const [showDeposit, setShowDeposit] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [processingDeposit, setProcessingDeposit] = useState(false);
+
+  // ZR Treasury state (master accounts)
+  const [zrCreds, setZrCreds] = useState<ZrCredentials | null>(null);
+  const [zrBalance, setZrBalance] = useState<ZrSupplierBalance | null>(null);
+  const [zrPayments, setZrPayments] = useState<ZrSupplierPayment[]>([]);
+  const [zrTreasuryLoading, setZrTreasuryLoading] = useState(false);
+  const [acceptingPaymentId, setAcceptingPaymentId] = useState<string | null>(null);
 
   const loadFinanceData = async (userId: string, token: string | null) => {
     setLoading(true);
@@ -110,6 +118,50 @@ const Finance: React.FC = () => {
       setError(err.message || 'Failed to process deposit');
     } finally {
       setProcessingDeposit(false);
+    }
+  };
+
+  // ZR Treasury: resolve credentials
+  useEffect(() => {
+    if (carrier === 'zrexpress' && isMaster) {
+      resolveZrCredentials().then(setZrCreds);
+    }
+  }, [carrier, isMaster, resolveZrCredentials]);
+
+  const loadZrTreasury = async () => {
+    if (!zrCreds) return;
+    setZrTreasuryLoading(true);
+    setError(null);
+    try {
+      const [bal, paymentsResult] = await Promise.all([
+        getSupplierBalance(zrCreds),
+        searchSupplierPayments(zrCreds, { pageNumber: 1, pageSize: 20, orderBy: ['createdAt desc'], includeTransactions: true }),
+      ]);
+      setZrBalance(bal);
+      setZrPayments(paymentsResult.items || []);
+    } catch (err: any) {
+      setError('Failed to load ZR treasury: ' + (err?.message || 'unknown error'));
+    } finally {
+      setZrTreasuryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (zrCreds && carrier === 'zrexpress' && isMaster) {
+      loadZrTreasury();
+    }
+  }, [zrCreds, carrier, isMaster]);
+
+  const handleAcceptPayment = async (paymentId: string) => {
+    if (!zrCreds || acceptingPaymentId) return;
+    setAcceptingPaymentId(paymentId);
+    try {
+      await acceptSupplierPayment(zrCreds, paymentId);
+      await loadZrTreasury();
+    } catch (err: any) {
+      setError('Failed to accept payment: ' + (err?.message || 'unknown error'));
+    } finally {
+      setAcceptingPaymentId(null);
     }
   };
 
@@ -297,7 +349,7 @@ const Finance: React.FC = () => {
     return null;
   }
 
-  // ZR Express → show reseller wallet
+  // ZR Express → show reseller wallet + (master) ZR treasury
   if (carrier === 'zrexpress') {
     return (
       <div className="min-h-screen bg-gray-950 text-gray-100 p-4 md:p-8">
@@ -309,14 +361,23 @@ const Finance: React.FC = () => {
               </button>
               <h1 className="text-3xl font-extrabold text-white flex items-center gap-3">
                 <Wallet className="text-amber-400" size={32} />
-                My Wallet
+                {isMaster ? 'Treasury & Wallet' : 'My Wallet'}
               </h1>
             </div>
-            <button onClick={loadWallet} disabled={walletLoading}
-              className="flex items-center gap-2 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-amber-700 rounded-lg text-sm font-medium transition-all disabled:opacity-50">
-              <RefreshCw size={16} className={walletLoading ? 'animate-spin' : ''} />
-              Refresh
-            </button>
+            <div className="flex gap-2">
+              {isMaster && (
+                <button onClick={loadZrTreasury} disabled={zrTreasuryLoading}
+                  className="flex items-center gap-2 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-blue-700 rounded-lg text-sm font-medium transition-all disabled:opacity-50">
+                  <Building2 size={16} className={zrTreasuryLoading ? 'animate-spin' : ''} />
+                  Sync ZR Treasury
+                </button>
+              )}
+              <button onClick={loadWallet} disabled={walletLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-amber-700 rounded-lg text-sm font-medium transition-all disabled:opacity-50">
+                <RefreshCw size={16} className={walletLoading ? 'animate-spin' : ''} />
+                Refresh Wallet
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -325,9 +386,100 @@ const Finance: React.FC = () => {
             </div>
           )}
 
-          {/* Balance Card */}
+          {/* ZR Treasury Balance (master accounts only) */}
+          {isMaster && (
+            <div className="bg-gradient-to-br from-blue-950/40 to-gray-950 border border-blue-600/30 rounded-2xl p-8">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Building2 className="text-blue-400" size={20} />
+                  <p className="text-blue-300 text-sm font-medium uppercase tracking-wider">ZR Express Treasury Balance</p>
+                </div>
+                {zrTreasuryLoading && <RefreshCw size={16} className="animate-spin text-blue-400" />}
+              </div>
+              {zrBalance ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <p className="text-gray-400 text-xs uppercase mb-1">Available Balance</p>
+                    <p className="text-3xl font-black text-blue-400">{(zrBalance.balance ?? 0).toLocaleString()} DA</p>
+                  </div>
+                  {zrBalance.pendingAmount !== undefined && (
+                    <div>
+                      <p className="text-gray-400 text-xs uppercase mb-1">Pending</p>
+                      <p className="text-3xl font-black text-yellow-400">{(zrBalance.pendingAmount ?? 0).toLocaleString()} DA</p>
+                    </div>
+                  )}
+                  {zrBalance.totalCollected !== undefined && (
+                    <div>
+                      <p className="text-gray-400 text-xs uppercase mb-1">Total Collected</p>
+                      <p className="text-3xl font-black text-green-400">{(zrBalance.totalCollected ?? 0).toLocaleString()} DA</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-sm">{zrTreasuryLoading ? 'Loading treasury data...' : 'No treasury data. Click "Sync ZR Treasury" to fetch.'}</p>
+              )}
+            </div>
+          )}
+
+          {/* ZR Supplier Payments (master accounts only) */}
+          {isMaster && zrPayments.length > 0 && (
+            <div className="bg-neutral-900 border border-blue-800/30 rounded-2xl overflow-hidden">
+              <div className="p-5 border-b border-neutral-800 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    <Building2 size={18} className="text-blue-400" /> ZR Payouts & Payments
+                  </h2>
+                  <p className="text-xs text-gray-400 mt-0.5">Supplier payments from ZR Express — accept to reconcile</p>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-neutral-950">
+                    <tr>
+                      {['Reference', 'Amount', 'Status', 'Date', 'Transactions', ''].map(h => (
+                        <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-800">
+                    {zrPayments.map(p => (
+                      <tr key={p.id} className="hover:bg-neutral-800/20 transition-colors">
+                        <td className="px-5 py-3.5 font-mono text-xs text-blue-400">{p.referenceId || p.id.slice(0, 8)}</td>
+                        <td className="px-5 py-3.5 font-mono font-bold text-white">{(p.amount ?? 0).toLocaleString()} DA</td>
+                        <td className="px-5 py-3.5">
+                          <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                            p.status === 'Completed' ? 'bg-green-950/40 text-green-400 border border-green-800/40' :
+                            p.status === 'Pending' ? 'bg-yellow-950/40 text-yellow-400 border border-yellow-800/40' :
+                            'bg-gray-800 text-gray-400'
+                          }`}>
+                            {p.status}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5 text-gray-500 text-xs">{new Date(p.createdAt).toLocaleDateString()}</td>
+                        <td className="px-5 py-3.5 text-gray-400 text-xs">{p.transactions?.length || 0} parcel(s)</td>
+                        <td className="px-5 py-3.5">
+                          {p.status !== 'Completed' && (
+                            <button
+                              onClick={() => handleAcceptPayment(p.id)}
+                              disabled={acceptingPaymentId !== null}
+                              className="flex items-center gap-1 px-3 py-1.5 bg-green-600/20 hover:bg-green-600/40 text-green-400 rounded-lg text-xs font-bold transition-colors disabled:opacity-30"
+                            >
+                              {acceptingPaymentId === p.id ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+                              Accept
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Local Wallet Balance Card */}
           <div className="bg-gradient-to-br from-neutral-900 to-gray-950 border border-amber-600/30 rounded-2xl p-8">
-            <p className="text-gray-400 text-sm font-medium uppercase tracking-wider mb-1">Current Balance</p>
+            <p className="text-gray-400 text-sm font-medium uppercase tracking-wider mb-1">Local Wallet Balance</p>
             <p className={`text-4xl font-black ${balance >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
               {balance.toLocaleString()} DA
             </p>
@@ -362,10 +514,10 @@ const Finance: React.FC = () => {
             </div>
           )}
 
-          {/* Transaction History */}
+          {/* Local Transaction History */}
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
             <div className="p-5 border-b border-neutral-800">
-              <h2 className="text-lg font-bold text-white">Transaction History</h2>
+              <h2 className="text-lg font-bold text-white">Local Transaction History</h2>
             </div>
             {walletLoading ? (
               <div className="p-10 text-center text-gray-500"><RefreshCw size={24} className="animate-spin mx-auto mb-2" />Loading...</div>

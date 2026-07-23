@@ -6,7 +6,7 @@ import {
   generateMultipleLabels, updateParcelAmount, updateParcelCustomer,
   deleteBulkParcels, createParcelRefund, createParcelExchange,
   createParcelModificationRequest, createParcel, getAllWilayas,
-  getCommunesByWilaya
+  getCommunesByWilaya, getSupplierBalance
 } from '../services/zrExpressApi';
 import LoadingSpinner from './LoadingSpinner';
 import {
@@ -14,7 +14,7 @@ import {
   Plus, ChevronDown, Calendar, Layers, List,
   X, Printer, Edit3, Trash2, CheckSquare, Square,
   RotateCcw, ArrowLeftRight, FileEdit, Upload, FileText,
-  CheckCircle, AlertTriangle
+  CheckCircle, AlertTriangle, Building2
 } from 'lucide-react';
 
 interface ZrDashboardContentProps {
@@ -53,6 +53,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
   const [importColumns, setImportColumns] = useState<Record<string, number>>({});
   const [importProgress, setImportProgress] = useState<{ current: number; total: number; results: { tracking: string; status: string; error?: string }[] } | null>(null);
   const [importLoading, setImportLoading] = useState(false);
+  const [treasuryBalance, setTreasuryBalance] = useState<number | null>(null);
   const [editParcel, setEditParcel] = useState<ZrParcel | null>(null);
   const [editAmount, setEditAmount] = useState('');
   const [editName, setEditName] = useState('');
@@ -101,12 +102,22 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
     try {
       clearZrCache();
       await fetchParcels(currentPage);
+      fetchTreasury();
     } catch (err: any) {
       setError(`Refresh failed: ${err.message || 'Connection error.'}`);
     } finally {
       setSyncing(false);
     }
   };
+
+  const fetchTreasury = async () => {
+    try {
+      const bal = await getSupplierBalance(credentials);
+      setTreasuryBalance(bal.balance ?? 0);
+    } catch {}
+  };
+
+  useEffect(() => { fetchTreasury(); }, [credentials.tenantId, credentials.apiKey]);
 
   const allSelected = useMemo(() =>
     currentParcels.length > 0 && currentParcels.every(p => selectedIds.has(p.id)),
@@ -260,6 +271,11 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
             <span className="text-xs text-gray-500">
               {totalCount} parcels · {totalAmount.toLocaleString()} DA total
             </span>
+            {treasuryBalance !== null && (
+              <span className="text-xs text-blue-400 font-medium flex items-center gap-1 bg-blue-950/40 px-3 py-1 rounded-full border border-blue-800/40">
+                <Building2 size={12} /> Treasury: {treasuryBalance.toLocaleString()} DA
+              </span>
+            )}
             <button
               onClick={handleForceUpdate}
               disabled={syncing}
