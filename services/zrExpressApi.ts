@@ -6,6 +6,8 @@ import {
   ZrWorkflowSearchRequest, ZrWorkflowSearchResponse,
   ZrCreateCustomerRequest, ZrCustomer, ZrCustomerSearchRequest, ZrCustomerSearchResponse,
   ZrHubSearchRequest, ZrHubSearchResponse, ZrSupplierInfo,
+  ZrLabelRequest, ZrLabelResponse,
+  ZrParcelStateHistoryEntry,
 } from '../types';
 
 const ZR_API_BASE = '/api/zr';
@@ -244,6 +246,28 @@ export async function getSupplierInfo(
   supplierId: string
 ): Promise<ZrSupplierInfo> {
   return zrRequest<ZrSupplierInfo>(creds, 'POST', `/supplier/${encodeURIComponent(supplierId)}`);
+}
+
+// ============================================================================
+// Phase 2B: Labels
+// ============================================================================
+
+export async function generateIndividualLabels(
+  creds: ZrCredentials,
+  data: ZrLabelRequest
+): Promise<ZrLabelResponse> {
+  return zrRequest<ZrLabelResponse>(creds, 'POST', '/parcels/labels/individual', data);
+}
+
+// ============================================================================
+// Phase 2B: State History
+// ============================================================================
+
+export async function getParcelStateHistory(
+  creds: ZrCredentials,
+  parcelId: string
+): Promise<ZrParcelStateHistoryEntry[]> {
+  return zrRequest<ZrParcelStateHistoryEntry[]>(creds, 'GET', `/parcels/${encodeURIComponent(parcelId)}/state-history`);
 }
 
 export async function getParcelStats(

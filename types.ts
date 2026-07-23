@@ -432,8 +432,21 @@ export interface ZrHub {
   id: string;
   name: string;
   type: string;
-  address: ZrDeliveryAddress;
+  isPickupPoint: boolean;
+  address: {
+    street?: string;
+    city?: string;
+    cityTerritoryId: string;
+    district?: string;
+    districtTerritoryId: string;
+    postalCode?: string;
+    country?: string;
+    coordinates?: ZrCoordinates;
+  };
+  openingHours?: string;
+  phone?: ZrPhone;
   services?: Array<{ id: string; type: string }>;
+  createdAt?: string;
 }
 
 export interface ZrHubSearchRequest {
@@ -441,11 +454,55 @@ export interface ZrHubSearchRequest {
   pageSize: number;
   orderBy?: string[];
   keyword?: string;
-  hubIds?: string[];
-  territoryId?: string;
 }
 
 export type ZrHubSearchResponse = ZrPaginatedResponse<ZrHub>;
+
+// ============================================================================
+// ZR Labels
+// ============================================================================
+
+export interface ZrLabelRequest {
+  trackingNumbers: string[];
+}
+
+export interface ZrLabelFile {
+  trackingNumber: string;
+  fileUrl: string;
+}
+
+export interface ZrLabelResponse {
+  parcelLabelFiles: ZrLabelFile[];
+  failedTrackingNumbers: string[];
+}
+
+// ============================================================================
+// ZR State History
+// ============================================================================
+
+export interface ZrParcelStateHistoryEntry {
+  id: string;
+  createdAt: string;
+  previousState?: ZrParcelState;
+  newState: ZrParcelState;
+  modifiedBy?: { id: string; fullName?: string };
+  location?: {
+    hubId?: string;
+    hubName?: string;
+    hubCity?: string;
+    hubDistrict?: string;
+    type?: string;
+    membership?: string;
+    hubTerritoryCityId?: string;
+  };
+  comment?: string;
+  situations?: Array<{
+    situationName?: string;
+    situationSlug?: string;
+    situationDescription?: string;
+    createdAt: string;
+  }>;
+}
 
 // ============================================================================
 // ZR Supplier Info

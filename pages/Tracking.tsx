@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Search, MapPin, Calendar, MessageSquare, AlertCircle, Package, Phone, Wallet, Banknote, Tag, Truck } from 'lucide-react';
 import { trackOrder } from '../services/api';
-import { getParcelByTracking } from '../services/zrExpressApi';
-import { TrackingInfo, ZrParcel, ZrCredentials } from '../types';
+import { getParcelByTracking, getParcelStateHistory } from '../services/zrExpressApi';
+import { TrackingInfo, ZrParcel, ZrCredentials, ZrParcelStateHistoryEntry } from '../types';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatusBadge from '../components/StatusBadge';
 import { STATUS_TRANSLATIONS, WILAYAS } from '../constants';
@@ -20,6 +20,7 @@ const Tracking: React.FC = () => {
   const location = useLocation();
 
   const [zrCreds, setZrCreds] = useState<ZrCredentials | null>(null);
+  const [zrStateHistory, setZrStateHistory] = useState<ZrParcelStateHistoryEntry[]>([]);
 
   useEffect(() => {
     resolveZrCredentials().then(setZrCreds);
@@ -55,6 +56,7 @@ const Tracking: React.FC = () => {
       try {
         const parcel = await getParcelByTracking(zrCreds, number);
         setZrData(parcel);
+        getParcelStateHistory(zrCreds, parcel.id).then(setZrStateHistory).catch(() => setZrStateHistory([]));
       } catch (err: any) {
         setError(err.message || 'Failed to fetch ZR Express tracking info.');
       } finally {
@@ -245,6 +247,51 @@ const Tracking: React.FC = () => {
               </div>
             )}
           </div>
+
+          {zrStateHistory.length > 0 && (
+            <div className="bg-arrow-dark border border-amber-600/30 rounded-2xl p-8 shadow-xl">
+              <h2 className="text-xl font-bold text-amber-400 mb-8 flex items-center gap-2">
+                <MapPin size={24} /> State History
+              </h2>
+              <div className="relative pl-4 space-y-12 before:content-[''] before:absolute before:left-0 before:top-2 before:bottom-0 before:w-0.5 before:bg-gradient-to-b before:from-amber-400 before:to-neutral-800">
+                {[...zrStateHistory].reverse().map((entry, index) => (
+                  <div key={entry.id} className="relative pl-8">
+                    <div className={`absolute -left-[5px] top-1.5 w-3 h-3 rounded-full shadow-[0_0_10px] ${index === 0 ? 'bg-amber-400 shadow-amber-400' : 'bg-neutral-600 shadow-transparent'}`}></div>
+                    <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-5 hover:border-amber-600/30 transition-colors">
+                      <div className="flex flex-wrap justify-between items-start gap-2 mb-2">
+                        <h3 className={`text-lg font-bold ${index === 0 ? 'text-white' : 'text-gray-300'}`}>
+                          {entry.newState.description || entry.newState.name.replace(/_/g, ' ')}
+                        </h3>
+                        <span className="text-sm text-gray-500 flex items-center gap-1">
+                          <Calendar size={14} /> {new Date(entry.createdAt).toLocaleString()}
+                        </span>
+                      </div>
+                      {entry.location?.hubName && (
+                        <div className="text-amber-400/80 text-sm flex items-center gap-2">
+                          <MapPin size={14} /> {entry.location.hubName}{entry.location.hubCity ? `, ${entry.location.hubCity}` : ''}
+                        </div>
+                      )}
+                      {entry.comment && (
+                        <div className="bg-neutral-900 rounded p-3 text-sm text-gray-400 mt-3 flex gap-2 items-start border-l-2 border-amber-600/50">
+                          <MessageSquare size={16} className="mt-0.5 shrink-0 text-amber-500" />
+                          <p>{entry.comment}</p>
+                        </div>
+                      )}
+                      {entry.situations && entry.situations.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {entry.situations.map((s, i) => (
+                            <span key={i} className="inline-block bg-amber-900/20 text-amber-500 text-xs px-3 py-1 rounded-full border border-amber-900/50">
+                              {s.situationName || s.situationSlug || s.situationDescription}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

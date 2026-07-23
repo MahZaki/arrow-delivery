@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ZrCredentials, ZrTerritory, ZrCreateParcelRequest } from '../types';
-import { createParcel, getParcelById, getAllRates, getAllWilayas, getCommunesByWilaya, searchWorkflows, updateParcelState } from '../services/zrExpressApi';
+import { createParcel, getParcelById, getAllRates, getAllWilayas, getCommunesByWilaya, searchWorkflows, updateParcelState, searchHubs, generateIndividualLabels } from '../services/zrExpressApi';
 import { saveParcel } from '../services/resellerApi';
 import { addTransaction } from '../services/transactionApi';
 import { useAuth } from '../contexts/AuthContext';
@@ -40,6 +40,11 @@ const ZrCreateOrder: React.FC = () => {
   const [loadingRates, setLoadingRates] = useState(true);
   const [deliveryRate, setDeliveryRate] = useState<number | null>(null);
   const [myDeliveryPrice, setMyDeliveryPrice] = useState<number | null>(null);
+
+  const [hubs, setHubs] = useState<import('../types').ZrHub[]>([]);
+  const [selectedHub, setSelectedHub] = useState('');
+  const [lastTracking, setLastTracking] = useState<string | null>(null);
+  const [lastParcelId, setLastParcelId] = useState<string | null>(null);
 
   const calcMyPrice = (zrPrice: number): number => {
     if (!user?.master_id || !user?.markup_type) return zrPrice;
@@ -83,6 +88,13 @@ const ZrCreateOrder: React.FC = () => {
       })
       .catch(() => setAllRates(new Map()))
       .finally(() => setLoadingRates(false));
+  }, [credentials?.tenantId, credentials?.apiKey]);
+
+  useEffect(() => {
+    if (!credentials) return;
+    searchHubs(credentials, { pageNumber: 1, pageSize: 200 })
+      .then(res => setHubs(res.items.filter(h => h.isPickupPoint)))
+      .catch(() => setHubs([]));
   }, [credentials?.tenantId, credentials?.apiKey]);
 
   const extractPrice = (rate: import('../types').ZrDeliveryRate | undefined): number | null => {
@@ -130,6 +142,10 @@ const ZrCreateOrder: React.FC = () => {
       setError('Please fill in all required fields.');
       return;
     }
+    if (deliveryType === 'pickup-point' && !selectedHub) {
+      setError('Please select a pickup point hub.');
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -162,6 +178,7 @@ const ZrCreateOrder: React.FC = () => {
         description,
         amount: parseFloat(amount) || 0,
         ...(weight ? { weight: { weight: parseFloat(weight) } } : {}),
+        ...(deliveryType === 'pickup-point' && selectedHub ? { hubId: selectedHub } : {}),
       };
 
       const result = await createParcel(credentials, payload);
@@ -189,8 +206,9 @@ const ZrCreateOrder: React.FC = () => {
           }
         })
         .catch(() => {});
+      setLastTracking(parcelDetails.trackingNumber);
+      setLastParcelId(result.id);
       setSuccess(`Parcel created successfully! Tracking: ${parcelDetails.trackingNumber}`);
-      setTimeout(() => navigate('/dashboard'), 2000);
     } catch (err: any) {
       setError(err.message || 'Failed to create parcel');
     } finally {
@@ -225,7 +243,26 @@ const ZrCreateOrder: React.FC = () => {
           <div className="bg-red-900/20 border border-red-500/50 text-red-200 p-4 rounded-xl mb-6">{error}</div>
         )}
         {success && (
-          <div className="bg-emerald-900/20 border border-emerald-500/50 text-emerald-200 p-4 rounded-xl mb-6">{success}</div>
+          <div className="bg-emerald-900/20 border border-emerald-500/50 text-emerald-200 p-4 rounded-xl mb-6">
+            {success}
+            <div className="flex gap-3 mt-3">
+              <button onClick={() => navigate('/dashboard')}
+                className="text-sm bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg transition-colors">
+                Go to Dashboard
+              </button>
+              <button onClick={async () => {
+                if (!credentials || !lastTracking) return;
+                try {
+                  const result = await generateIndividualLabels(credentials, { trackingNumbers: [lastTracking] });
+                  if (result.parcelLabelFiles.length > 0) {
+                    window.open(result.parcelLabelFiles[0].fileUrl, '_blank');
+                  }
+                } catch {}
+              }} className="text-sm bg-amber-600 hover:bg-amber-500 text-black px-4 py-2 rounded-lg font-medium transition-colors">
+                Print Label
+              </button>
+            </div>
+          </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-8">
@@ -294,12 +331,24 @@ const ZrCreateOrder: React.FC = () => {
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 uppercase mb-1 block flex items-center gap-1"><Truck size={12} /> Delivery Type *</label>
-                  <select value={deliveryType} onChange={e => setDeliveryType(e.target.value as 'home' | 'pickup-point')}
+                  <select value={deliveryType} onChange={e => { setDeliveryType(e.target.value as 'home' | 'pickup-point'); setSelectedHub(''); }}
                     className="w-full bg-neutral-900 border border-neutral-700 text-white px-4 py-2.5 rounded-xl focus:border-amber-500 focus:outline-none">
                     <option value="home">Home Delivery</option>
                     <option value="pickup-point">Pickup Point</option>
                   </select>
                 </div>
+                {deliveryType === 'pickup-point' && (
+                  <div>
+                    <label className="text-xs text-gray-500 uppercase mb-1 block">Pickup Point *</label>
+                    <select value={selectedHub} onChange={e => setSelectedHub(e.target.value)}
+                      className="w-full bg-neutral-900 border border-neutral-700 text-white px-4 py-2.5 rounded-xl focus:border-amber-500 focus:outline-none">
+                      <option value="">Select Hub</option>
+                      {hubs.map(h => (
+                        <option key={h.id} value={h.id}>{h.name} — {h.address?.city ?? h.address?.district ?? ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
           </section>
