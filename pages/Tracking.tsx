@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Search, MapPin, Calendar, MessageSquare, AlertCircle, Package, Phone, Wallet, Banknote, Tag, Truck } from 'lucide-react';
+import { Search, MapPin, Calendar, MessageSquare, AlertCircle, Package, Phone, Wallet, Banknote, Tag, Truck, Printer } from 'lucide-react';
 import { trackOrder } from '../services/api';
-import { getParcelByTracking, getParcelStateHistory } from '../services/zrExpressApi';
+import { getParcelByTracking, getParcelStateHistory, generateIndividualLabels } from '../services/zrExpressApi';
 import { TrackingInfo, ZrParcel, ZrCredentials, ZrParcelStateHistoryEntry } from '../types';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatusBadge from '../components/StatusBadge';
@@ -21,6 +21,7 @@ const Tracking: React.FC = () => {
 
   const [zrCreds, setZrCreds] = useState<ZrCredentials | null>(null);
   const [zrStateHistory, setZrStateHistory] = useState<ZrParcelStateHistoryEntry[]>([]);
+  const [labelLoading, setLabelLoading] = useState(false);
 
   useEffect(() => {
     resolveZrCredentials().then(setZrCreds);
@@ -179,6 +180,24 @@ const Tracking: React.FC = () => {
                 <div className="text-gray-500 text-xs mt-1 flex items-center gap-1">
                   <Calendar size={12} /> Created on {new Date(zrData.createdAt).toLocaleDateString()}
                 </div>
+                <button
+                  onClick={async () => {
+                    if (!zrCreds || labelLoading) return;
+                    setLabelLoading(true);
+                    try {
+                      const result = await generateIndividualLabels(zrCreds, { trackingNumbers: [zrData.trackingNumber] });
+                      if (result.parcelLabelFiles.length > 0) {
+                        window.open(result.parcelLabelFiles[0].fileUrl, '_blank');
+                      }
+                    } catch {}
+                    setLabelLoading(false);
+                  }}
+                  disabled={labelLoading}
+                  className="mt-2 flex items-center gap-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-black px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+                >
+                  <Printer size={16} />
+                  {labelLoading ? 'Generating...' : 'Print Label'}
+                </button>
               </div>
               <span
                 className="inline-block px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm text-white"
