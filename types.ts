@@ -317,6 +317,11 @@ export interface ZrCreateParcelResponse {
   id: string;
 }
 
+export interface ZrDeliveryRate {
+  deliveryPrice: number;
+  returnPrice?: number;
+}
+
 export interface ZrTerritory {
   id: string;
   code: number;

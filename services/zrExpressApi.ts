@@ -2,7 +2,7 @@ import {
   ZrParcel, ZrParcelSearchRequest, ZrParcelSearchResponse,
   ZrCreateParcelRequest, ZrCreateParcelResponse,
   ZrTerritory, ZrTerritorySearchRequest, ZrTerritorySearchResponse,
-  ZrCredentials
+  ZrDeliveryRate, ZrCredentials
 } from '../types';
 
 const ZR_API_BASE = '/api/zr';
@@ -104,6 +104,13 @@ export async function createParcel(
   data: ZrCreateParcelRequest
 ): Promise<ZrCreateParcelResponse> {
   return zrRequest<ZrCreateParcelResponse>(creds, 'POST', '/parcels', data);
+}
+
+export async function getDeliveryRate(
+  creds: ZrCredentials,
+  toTerritoryId: string
+): Promise<ZrDeliveryRate> {
+  return zrRequest<ZrDeliveryRate>(creds, 'GET', `/delivery-pricing/rates/${encodeURIComponent(toTerritoryId)}`);
 }
 
 export async function getParcelById(

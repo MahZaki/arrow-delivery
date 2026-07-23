@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ZrCredentials, ZrTerritory, ZrCreateParcelRequest } from '../types';
-import { createParcel, getParcelById, getAllWilayas, getCommunesByWilaya } from '../services/zrExpressApi';
+import { createParcel, getParcelById, getDeliveryRate, getAllWilayas, getCommunesByWilaya } from '../services/zrExpressApi';
 import { saveParcel } from '../services/resellerApi';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -35,6 +35,16 @@ const ZrCreateOrder: React.FC = () => {
 
   const [credentials, setCredentials] = useState<ZrCredentials | null>(null);
 
+  const [deliveryRate, setDeliveryRate] = useState<number | null>(null);
+  const [loadingRate, setLoadingRate] = useState(false);
+  const [myDeliveryPrice, setMyDeliveryPrice] = useState<number | null>(null);
+
+  const calcMyPrice = (zrPrice: number): number => {
+    if (!user?.master_id || !user?.markup_type) return zrPrice;
+    if (user.markup_type === 'flat') return zrPrice + (user.markup_value || 0);
+    return zrPrice * (1 + (user.markup_value || 0) / 100);
+  };
+
   useEffect(() => {
     resolveZrCredentials().then(setCredentials);
   }, [resolveZrCredentials]);
@@ -57,6 +67,25 @@ const ZrCreateOrder: React.FC = () => {
       .then(setCommunes)
       .catch(() => setCommunes([]));
   }, [selectedWilaya, credentials?.tenantId, credentials?.apiKey]);
+
+  useEffect(() => {
+    if (!credentials || !selectedCommune) {
+      setDeliveryRate(null);
+      setMyDeliveryPrice(null);
+      return;
+    }
+    setLoadingRate(true);
+    getDeliveryRate(credentials, selectedCommune)
+      .then(rate => {
+        setDeliveryRate(rate.deliveryPrice);
+        setMyDeliveryPrice(calcMyPrice(rate.deliveryPrice));
+      })
+      .catch(() => {
+        setDeliveryRate(null);
+        setMyDeliveryPrice(null);
+      })
+      .finally(() => setLoadingRate(false));
+  }, [selectedCommune, credentials?.tenantId, credentials?.apiKey]);
 
   const addProduct = () => {
     setProducts([...products, { name: '', price: '', quantity: '1' }]);
@@ -126,7 +155,7 @@ const ZrCreateOrder: React.FC = () => {
           result.id,
           parcelDetails.trackingNumber,
           parseFloat(amount) || 0,
-          0, 0,
+          deliveryRate || 0, myDeliveryPrice || 0,
           parcelDetails.state.name
         );
       }
@@ -312,6 +341,19 @@ const ZrCreateOrder: React.FC = () => {
               </div>
             </div>
           </section>
+
+          {/* Delivery Pricing */}
+          {deliveryRate !== null && (
+            <section className="bg-amber-900/10 border border-amber-600/30 rounded-2xl p-4">
+              <h3 className="text-sm font-bold text-amber-400 mb-2">Delivery Pricing</h3>
+              <div className="flex gap-6 text-sm">
+                <span className="text-gray-400">Base: <strong className="text-white">{deliveryRate.toLocaleString()} DA</strong></span>
+                {myDeliveryPrice !== null && myDeliveryPrice !== deliveryRate && (
+                  <span className="text-gray-400">Your price: <strong className="text-amber-300">{myDeliveryPrice.toLocaleString()} DA</strong></span>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* Submit */}
           <div className="flex justify-end gap-4 pt-4 border-t border-neutral-800">
