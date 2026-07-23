@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ZrParcel, ZrCredentials } from '../types';
-import { searchParcels, clearZrCache } from '../services/zrExpressApi';
+import { searchParcels, clearZrCache, generateIndividualLabels } from '../services/zrExpressApi';
 import LoadingSpinner from './LoadingSpinner';
 import {
   Package, Truck, CheckCircle, RefreshCw, Search,
@@ -26,6 +26,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [labelLoading, setLabelLoading] = useState<string | null>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -234,13 +235,37 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                         {new Date(parcel.createdAt).toLocaleDateString()}
                       </td>
                       <td className="p-4 text-center">
-                        <button
-                          onClick={() => navigate(`/track?tracking=${parcel.trackingNumber}&carrier=zrexpress`)}
-                          className="p-2 hover:bg-amber-600/20 rounded-lg text-amber-400 transition-colors"
-                          title="View Details"
-                        >
-                          <Search size={18} />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => navigate(`/track?tracking=${parcel.trackingNumber}&carrier=zrexpress`)}
+                            className="p-2 hover:bg-amber-600/20 rounded-lg text-amber-400 transition-colors"
+                            title="View Details"
+                          >
+                            <Search size={18} />
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (labelLoading) return;
+                              setLabelLoading(parcel.trackingNumber);
+                              try {
+                                const result = await generateIndividualLabels(credentials, { trackingNumbers: [parcel.trackingNumber] });
+                                if (result.parcelLabelFiles.length > 0) {
+                                  window.open(result.parcelLabelFiles[0].fileUrl, '_blank');
+                                }
+                              } catch {}
+                              setLabelLoading(null);
+                            }}
+                            disabled={labelLoading !== null}
+                            className="p-2 hover:bg-amber-600/20 rounded-lg text-amber-400 transition-colors disabled:opacity-30"
+                            title="Print Label"
+                          >
+                            {labelLoading === parcel.trackingNumber ? (
+                              <RefreshCw size={18} className="animate-spin" />
+                            ) : (
+                              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
