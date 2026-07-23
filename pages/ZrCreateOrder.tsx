@@ -78,8 +78,11 @@ const ZrCreateOrder: React.FC = () => {
     setLoadingRate(true);
     getDeliveryRate(credentials, selectedCommune)
       .then(rate => {
-        setDeliveryRate(rate.deliveryPrice);
-        setMyDeliveryPrice(calcMyPrice(rate.deliveryPrice));
+        const price = rate.deliveryPrice ?? rate.homeDeliveryPrice ?? rate.pickupPointPrice;
+        if (price != null) {
+          setDeliveryRate(price);
+          setMyDeliveryPrice(calcMyPrice(price));
+        }
       })
       .catch(() => {
         setDeliveryRate(null);
@@ -347,7 +350,7 @@ const ZrCreateOrder: React.FC = () => {
           </section>
 
           {/* Delivery Pricing */}
-          {deliveryRate !== null && (
+          {deliveryRate != null && (
             <section className="bg-amber-900/10 border border-amber-600/30 rounded-2xl p-4">
               <h3 className="text-sm font-bold text-amber-400 mb-2">Delivery Pricing</h3>
               <div className="flex gap-6 text-sm">

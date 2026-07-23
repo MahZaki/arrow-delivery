@@ -318,8 +318,10 @@ export interface ZrCreateParcelResponse {
 }
 
 export interface ZrDeliveryRate {
-  deliveryPrice: number;
+  deliveryPrice?: number;
   returnPrice?: number;
+  homeDeliveryPrice?: number;
+  pickupPointPrice?: number;
 }
 
 export interface ZrTerritory {
