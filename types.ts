@@ -848,6 +848,8 @@ export interface ResellerParcel {
   zr_return_price: number;
   state: string;
   delivered_at: string | null;
+  settled?: boolean;
+  payout_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -855,9 +857,46 @@ export interface ResellerParcel {
 export interface Transaction {
   id: string;
   profile_id: string;
-  type: 'delivery_fee' | 'return_fee' | 'deposit' | 'withdrawal' | 'adjustment';
+  type: 'delivery_fee' | 'return_fee' | 'deposit' | 'withdrawal' | 'adjustment' | 'payout';
   amount: number;
   ref_parcel_id: string | null;
   description: string | null;
   created_at: string;
+}
+
+// ============================================================================
+// Financial System: Sub-account payouts
+// ============================================================================
+
+export interface SubAccountPayout {
+  id: string;
+  sub_account_id: string;
+  master_id: string;
+  amount: number;
+  status: 'pending' | 'accepted' | 'rejected';
+  reference: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PayoutParcel {
+  id: string;
+  payout_id: string;
+  reseller_parcel_id: string;
+  cod_amount: number;
+  delivery_price: number;
+  net_amount: number;
+}
+
+export interface SubAccountBalance {
+  subAccountId: string;
+  subAccountEmail: string;
+  totalDelivered: number;
+  totalCod: number;
+  totalDeliveryFees: number;
+  totalReturnFees: number;
+  netBalance: number;
+  pendingPayout: number;
+  settledAmount: number;
+  masterProfit: number;
 }

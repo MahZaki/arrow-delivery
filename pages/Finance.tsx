@@ -1,17 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCarrier } from '../contexts/CarrierContext';
 import { fetchOrdersFromApi, fetchArchivedFromDb } from '../services/api';
-import { Order, Transaction, ZrCredentials, ZrSupplierPayment, ZrSupplierBalance } from '../types';
+import { Order, Transaction, ZrCredentials, ZrSupplierPayment, ZrSupplierBalance, SubAccountBalance, SubAccountPayout, PayoutParcel, ResellerParcel } from '../types';
 import { getTransactions, getBalance, addTransaction } from '../services/transactionApi';
 import { getSupplierBalance, searchSupplierPayments, acceptSupplierPayment } from '../services/zrExpressApi';
+import {
+  getAllSubAccountBalances, getSubAccountBalance, getSubAccountPayouts,
+  getMasterPayouts, getPayoutParcels, createPayout, updatePayoutStatus,
+  removeParcelFromPayout, addParcelToPayout, getDeliveredUnsettledParcels,
+  getAllDeliveredParcels
+} from '../services/financialApi';
 import { WILAYAS, STATUS_TRANSLATIONS } from '../constants';
 import {
   DollarSign, TrendingUp, CreditCard, ShieldAlert,
   ArrowUpRight, BarChart3, PieChart, Calendar,
   Download, ArrowLeft, RefreshCw, Search, MapPin,
-  Wallet, Plus, Minus, Building2, CheckCircle
+  Wallet, Plus, Minus, Building2, CheckCircle,
+  Users, Package, ArrowRightLeft, X, ChevronDown
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -43,6 +50,27 @@ const Finance: React.FC = () => {
   const [zrPayments, setZrPayments] = useState<ZrSupplierPayment[]>([]);
   const [zrTreasuryLoading, setZrTreasuryLoading] = useState(false);
   const [acceptingPaymentId, setAcceptingPaymentId] = useState<string | null>(null);
+
+  // Sub-account balances (master view)
+  const [subBalances, setSubBalances] = useState<SubAccountBalance[]>([]);
+  const [subBalancesLoading, setSubBalancesLoading] = useState(false);
+
+  // Payout generation (master)
+  const [showPayoutModal, setShowPayoutModal] = useState(false);
+  const [payoutSubAccountId, setPayoutSubAccountId] = useState<string | null>(null);
+  const [payoutParcels, setPayoutParcels] = useState<ResellerParcel[]>([]);
+  const [selectedParcelIds, setSelectedParcelIds] = useState<Set<string>>(new Set());
+  const [payoutLoading, setPayoutLoading] = useState(false);
+
+  // Master payouts list
+  const [masterPayouts, setMasterPayouts] = useState<SubAccountPayout[]>([]);
+  const [payoutDetails, setPayoutDetails] = useState<Record<string, PayoutParcel[]>>({});
+
+  // Sub-account view: own delivered parcels + payouts
+  const [myDeliveredParcels, setMyDeliveredParcels] = useState<ResellerParcel[]>([]);
+  const [myPayouts, setMyPayouts] = useState<SubAccountPayout[]>([]);
+  const [myBalance, setMyBalance] = useState<SubAccountBalance | null>(null);
+  const [myFinanceLoading, setMyFinanceLoading] = useState(false);
 
   const loadFinanceData = async (userId: string, token: string | null) => {
     setLoading(true);
@@ -164,6 +192,100 @@ const Finance: React.FC = () => {
       setAcceptingPaymentId(null);
     }
   };
+
+  // === Financial system: sub-account balances ===
+  const loadSubAccountBalances = async () => {
+    if (!user?.id) return;
+    setSubBalancesLoading(true);
+    setError(null);
+    try {
+      const balances = await getAllSubAccountBalances(user.id);
+      setSubBalances(balances);
+      const payouts = await getMasterPayouts(user.id);
+      setMasterPayouts(payouts);
+    } catch (err: any) {
+      setError('Failed to load sub-account balances: ' + (err?.message || 'unknown error'));
+    } finally {
+      setSubBalancesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (carrier === 'zrexpress' && isMaster && user) {
+      loadSubAccountBalances();
+    }
+  }, [carrier, isMaster, user]);
+
+  // === Payout generation ===
+  const openPayoutModal = async (subAccountId: string) => {
+    setPayoutSubAccountId(subAccountId);
+    setShowPayoutModal(true);
+    setSelectedParcelIds(new Set());
+    setError(null);
+    try {
+      const parcels = await getDeliveredUnsettledParcels(subAccountId);
+      setPayoutParcels(parcels);
+    } catch (err: any) {
+      setError('Failed to load parcels: ' + (err?.message || 'unknown error'));
+    }
+  };
+
+  const toggleParcelSelection = (parcelId: string) => {
+    const next = new Set(selectedParcelIds);
+    if (next.has(parcelId)) next.delete(parcelId); else next.add(parcelId);
+    setSelectedParcelIds(next);
+  };
+
+  const handleCreatePayout = async () => {
+    if (!user?.id || !payoutSubAccountId || selectedParcelIds.size === 0) return;
+    setPayoutLoading(true);
+    setError(null);
+    try {
+      await createPayout(user.id, payoutSubAccountId, Array.from(selectedParcelIds));
+      setShowPayoutModal(false);
+      setSelectedParcelIds(new Set());
+      await loadSubAccountBalances();
+    } catch (err: any) {
+      setError('Failed to create payout: ' + (err?.message || 'unknown error'));
+    }
+    setPayoutLoading(false);
+  };
+
+  const handlePayoutAction = async (payoutId: string, action: 'accepted' | 'rejected') => {
+    try {
+      await updatePayoutStatus(payoutId, action);
+      await loadSubAccountBalances();
+    } catch (err: any) {
+      setError('Failed to update payout: ' + (err?.message || 'unknown error'));
+    }
+  };
+
+  // === Sub-account financial view ===
+  const loadMyFinance = async () => {
+    if (!user?.id) return;
+    setMyFinanceLoading(true);
+    setError(null);
+    try {
+      const [balance, parcels, payouts] = await Promise.all([
+        getSubAccountBalance(user.id),
+        getAllDeliveredParcels(user.id),
+        getSubAccountPayouts(user.id),
+      ]);
+      setMyBalance(balance);
+      setMyDeliveredParcels(parcels);
+      setMyPayouts(payouts);
+    } catch (err: any) {
+      setError('Failed to load finance data: ' + (err?.message || 'unknown error'));
+    } finally {
+      setMyFinanceLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (carrier === 'zrexpress' && !isMaster && user) {
+      loadMyFinance();
+    }
+  }, [carrier, isMaster, user]);
 
   // Filter orders based on period and search query
   const filteredOrders = React.useMemo(() => {
@@ -349,54 +471,51 @@ const Finance: React.FC = () => {
     return null;
   }
 
-  // ZR Express → show reseller wallet + (master) ZR treasury
+  // ZR Express → financial system
   if (carrier === 'zrexpress') {
-    return (
-      <div className="min-h-screen bg-gray-950 text-gray-100 p-4 md:p-8">
-        <div className="max-w-5xl mx-auto space-y-8">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors mb-2">
-                <ArrowLeft size={16} /> Back to Dashboard
-              </button>
-              <h1 className="text-3xl font-extrabold text-white flex items-center gap-3">
-                <Wallet className="text-amber-400" size={32} />
-                {isMaster ? 'Treasury & Wallet' : 'My Wallet'}
-              </h1>
-            </div>
-            <div className="flex gap-2">
-              {isMaster && (
-                <button onClick={loadZrTreasury} disabled={zrTreasuryLoading}
-                  className="flex items-center gap-2 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-blue-700 rounded-lg text-sm font-medium transition-all disabled:opacity-50">
-                  <Building2 size={16} className={zrTreasuryLoading ? 'animate-spin' : ''} />
-                  Sync ZR Treasury
+    // === MASTER VIEW ===
+    if (isMaster) {
+      return (
+        <div className="min-h-screen bg-gray-950 text-gray-100 p-4 md:p-8">
+          <div className="max-w-6xl mx-auto space-y-8">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors mb-2">
+                  <ArrowLeft size={16} /> Back to Dashboard
                 </button>
-              )}
-              <button onClick={loadWallet} disabled={walletLoading}
-                className="flex items-center gap-2 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-amber-700 rounded-lg text-sm font-medium transition-all disabled:opacity-50">
-                <RefreshCw size={16} className={walletLoading ? 'animate-spin' : ''} />
-                Refresh Wallet
-              </button>
-            </div>
-          </div>
-
-          {error && (
-            <div className="bg-red-950/40 border border-red-800 rounded-xl p-4 flex items-center gap-3 text-red-300 text-sm">
-              <ShieldAlert size={18} /> {error}
-            </div>
-          )}
-
-          {/* ZR Treasury Balance (master accounts only) */}
-          {isMaster && (
-            <div className="bg-gradient-to-br from-blue-950/40 to-gray-950 border border-blue-600/30 rounded-2xl p-8">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Building2 className="text-blue-400" size={20} />
-                  <p className="text-blue-300 text-sm font-medium uppercase tracking-wider">ZR Express Treasury Balance</p>
-                </div>
-                {zrTreasuryLoading && <RefreshCw size={16} className="animate-spin text-blue-400" />}
+                <h1 className="text-3xl font-extrabold text-white flex items-center gap-3">
+                  <Building2 className="text-amber-400" size={32} /> Financial Dashboard
+                </h1>
+                <p className="text-gray-400 text-sm mt-1">Manage COD settlements, sub-account balances, and payouts</p>
               </div>
-              {zrBalance ? (
+              <div className="flex gap-2">
+                {zrCreds && (
+                  <button onClick={loadZrTreasury} disabled={zrTreasuryLoading}
+                    className="flex items-center gap-2 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-blue-700 rounded-lg text-sm font-medium transition-all disabled:opacity-50">
+                    <Building2 size={16} className={zrTreasuryLoading ? 'animate-spin' : ''} /> Sync ZR Treasury
+                  </button>
+                )}
+                <button onClick={loadSubAccountBalances} disabled={subBalancesLoading}
+                  className="flex items-center gap-2 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-amber-700 rounded-lg text-sm font-medium transition-all disabled:opacity-50">
+                  <RefreshCw size={16} className={subBalancesLoading ? 'animate-spin' : ''} /> Refresh
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <div className="bg-red-950/40 border border-red-800 rounded-xl p-4 flex items-center gap-3 text-red-300 text-sm">
+                <ShieldAlert size={18} /> {error}
+              </div>
+            )}
+
+            {/* ZR Treasury Balance */}
+            {zrCreds && zrBalance && (
+              <div className="bg-gradient-to-br from-blue-950/40 to-gray-950 border border-blue-600/30 rounded-2xl p-8">
+                <div className="flex items-center gap-2 mb-4">
+                  <Building2 className="text-blue-400" size={20} />
+                  <p className="text-blue-300 text-sm font-medium uppercase tracking-wider">ZR Express Treasury</p>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
                     <p className="text-gray-400 text-xs uppercase mb-1">Available Balance</p>
@@ -415,152 +534,308 @@ const Finance: React.FC = () => {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="bg-gradient-to-br from-gray-900 to-gray-950 border border-gray-800 rounded-2xl p-6">
+                <div className="p-3 bg-green-500/10 rounded-xl text-green-400 w-fit mb-3"><TrendingUp size={22} /></div>
+                <p className="text-gray-400 text-xs uppercase">Total Owed to Sub-accounts</p>
+                <p className="text-2xl font-black text-green-400 mt-1">{subBalances.reduce((s, b) => s + b.pendingPayout, 0).toLocaleString()} DA</p>
+                <p className="text-xs text-gray-500 mt-2">{subBalances.reduce((s, b) => s + b.totalDelivered, 0)} delivered parcels</p>
+              </div>
+              <div className="bg-gradient-to-br from-gray-900 to-gray-950 border border-gray-800 rounded-2xl p-6">
+                <div className="p-3 bg-amber-500/10 rounded-xl text-amber-400 w-fit mb-3"><DollarSign size={22} /></div>
+                <p className="text-gray-400 text-xs uppercase">Your Delivery Profit</p>
+                <p className="text-2xl font-black text-amber-400 mt-1">{subBalances.reduce((s, b) => s + b.masterProfit, 0).toLocaleString()} DA</p>
+                <p className="text-xs text-gray-500 mt-2">From markup on delivery fees</p>
+              </div>
+              <div className="bg-gradient-to-br from-gray-900 to-gray-950 border border-gray-800 rounded-2xl p-6">
+                <div className="p-3 bg-blue-500/10 rounded-xl text-blue-400 w-fit mb-3"><CheckCircle size={22} /></div>
+                <p className="text-gray-400 text-xs uppercase">Already Settled</p>
+                <p className="text-2xl font-black text-blue-400 mt-1">{subBalances.reduce((s, b) => s + b.settledAmount, 0).toLocaleString()} DA</p>
+                <p className="text-xs text-gray-500 mt-2">{masterPayouts.length} payouts generated</p>
+              </div>
+            </div>
+
+            {/* Sub-account balances table */}
+            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
+              <div className="p-5 border-b border-neutral-800 flex items-center justify-between">
+                <h2 className="text-lg font-bold text-white flex items-center gap-2"><Users size={18} className="text-amber-400" /> Sub-account Balances</h2>
+              </div>
+              {subBalancesLoading ? (
+                <div className="p-10 text-center text-gray-500"><RefreshCw size={24} className="animate-spin mx-auto mb-2" />Loading...</div>
+              ) : subBalances.length === 0 ? (
+                <div className="p-10 text-center text-gray-500">No sub-accounts found.</div>
               ) : (
-                <p className="text-gray-500 text-sm">{zrTreasuryLoading ? 'Loading treasury data...' : 'No treasury data. Click "Sync ZR Treasury" to fetch.'}</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-neutral-950">
+                      <tr>
+                        {['Sub-account', 'Delivered', 'COD Collected', 'Delivery Fees', 'Pending Payout', ''].map(h => (
+                          <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-800">
+                      {subBalances.map(b => (
+                        <tr key={b.subAccountId} className="hover:bg-neutral-800/20 transition-colors">
+                          <td className="px-5 py-3.5 text-white font-medium">{b.subAccountEmail}</td>
+                          <td className="px-5 py-3.5 text-gray-400">{b.totalDelivered} orders</td>
+                          <td className="px-5 py-3.5 font-mono text-green-400">{b.totalCod.toLocaleString()} DA</td>
+                          <td className="px-5 py-3.5 font-mono text-orange-400">{b.totalDeliveryFees.toLocaleString()} DA</td>
+                          <td className="px-5 py-3.5 font-mono font-bold text-amber-400">{b.pendingPayout.toLocaleString()} DA</td>
+                          <td className="px-5 py-3.5">
+                            <button
+                              onClick={() => openPayoutModal(b.subAccountId)}
+                              disabled={b.pendingPayout <= 0}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-black rounded-lg text-xs font-bold transition-colors disabled:opacity-30"
+                            >
+                              <ArrowRightLeft size={14} /> Generate Payout
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
-          )}
 
-          {/* ZR Supplier Payments (master accounts only) */}
-          {isMaster && zrPayments.length > 0 && (
-            <div className="bg-neutral-900 border border-blue-800/30 rounded-2xl overflow-hidden">
-              <div className="p-5 border-b border-neutral-800 flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                    <Building2 size={18} className="text-blue-400" /> ZR Payouts & Payments
-                  </h2>
-                  <p className="text-xs text-gray-400 mt-0.5">Supplier payments from ZR Express — accept to reconcile</p>
+            {/* Recent Payouts */}
+            {masterPayouts.length > 0 && (
+              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
+                <div className="p-5 border-b border-neutral-800">
+                  <h2 className="text-lg font-bold text-white">Recent Payouts</h2>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-neutral-950">
+                      <tr>
+                        {['Reference', 'Amount', 'Status', 'Date', ''].map(h => (
+                          <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-800">
+                      {masterPayouts.slice(0, 10).map(p => (
+                        <tr key={p.id} className="hover:bg-neutral-800/20 transition-colors">
+                          <td className="px-5 py-3.5 font-mono text-xs text-blue-400">{p.reference || p.id.slice(0, 8)}</td>
+                          <td className="px-5 py-3.5 font-mono font-bold text-white">{Number(p.amount).toLocaleString()} DA</td>
+                          <td className="px-5 py-3.5">
+                            <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                              p.status === 'accepted' ? 'bg-green-950/40 text-green-400 border border-green-800/40' :
+                              p.status === 'rejected' ? 'bg-red-950/40 text-red-400 border border-red-800/40' :
+                              'bg-yellow-950/40 text-yellow-400 border border-yellow-800/40'
+                            }`}>{p.status}</span>
+                          </td>
+                          <td className="px-5 py-3.5 text-gray-500 text-xs">{new Date(p.created_at).toLocaleDateString()}</td>
+                          <td className="px-5 py-3.5">
+                            {p.status === 'pending' && (
+                              <button onClick={() => handlePayoutAction(p.id, 'accepted')} className="text-xs text-green-400 hover:text-green-300 font-medium">Mark Paid</button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-neutral-950">
-                    <tr>
-                      {['Reference', 'Amount', 'Status', 'Date', 'Transactions', ''].map(h => (
-                        <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-800">
-                    {zrPayments.map(p => (
-                      <tr key={p.id} className="hover:bg-neutral-800/20 transition-colors">
-                        <td className="px-5 py-3.5 font-mono text-xs text-blue-400">{p.referenceId || p.id.slice(0, 8)}</td>
-                        <td className="px-5 py-3.5 font-mono font-bold text-white">{(p.amount ?? 0).toLocaleString()} DA</td>
-                        <td className="px-5 py-3.5">
-                          <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
-                            p.status === 'Completed' ? 'bg-green-950/40 text-green-400 border border-green-800/40' :
-                            p.status === 'Pending' ? 'bg-yellow-950/40 text-yellow-400 border border-yellow-800/40' :
-                            'bg-gray-800 text-gray-400'
-                          }`}>
-                            {p.status}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 text-gray-500 text-xs">{new Date(p.createdAt).toLocaleDateString()}</td>
-                        <td className="px-5 py-3.5 text-gray-400 text-xs">{p.transactions?.length || 0} parcel(s)</td>
-                        <td className="px-5 py-3.5">
-                          {p.status !== 'Completed' && (
-                            <button
-                              onClick={() => handleAcceptPayment(p.id)}
-                              disabled={acceptingPaymentId !== null}
-                              className="flex items-center gap-1 px-3 py-1.5 bg-green-600/20 hover:bg-green-600/40 text-green-400 rounded-lg text-xs font-bold transition-colors disabled:opacity-30"
-                            >
-                              {acceptingPaymentId === p.id ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle size={12} />}
-                              Accept
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            )}
+
+            {/* Payout Generation Modal */}
+            {showPayoutModal && payoutSubAccountId && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowPayoutModal(false)}>
+                <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-3xl w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2"><ArrowRightLeft size={18} className="text-amber-400" /> Generate Payout</h3>
+                    <button onClick={() => setShowPayoutModal(false)} className="text-gray-500 hover:text-white"><X size={20} /></button>
+                  </div>
+
+                  {payoutParcels.length === 0 ? (
+                    <div className="p-10 text-center text-gray-500">
+                      <Package size={48} className="mx-auto mb-4 opacity-30" />
+                      <p>No delivered unsettled parcels for this sub-account.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="bg-neutral-800 rounded-lg px-3 py-2 mb-4 flex items-center justify-between">
+                        <span className="text-xs text-gray-400">Select parcels to include in payout</span>
+                        <span className="text-xs text-gray-400">{selectedParcelIds.size} selected</span>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto mb-4 border border-neutral-800 rounded-lg">
+                        <table className="w-full text-xs">
+                          <thead><tr className="bg-neutral-950 text-gray-400 uppercase tracking-wider sticky top-0">
+                            <th className="p-2 w-8"></th><th className="p-2">Tracking</th><th className="p-2">COD</th><th className="p-2">Delivery Fee</th><th className="p-2">Net</th>
+                          </tr></thead>
+                          <tbody className="divide-y divide-neutral-800">
+                            {payoutParcels.map(p => {
+                              const net = Number(p.cod_amount) - Number(p.my_delivery_price);
+                              const isSelected = selectedParcelIds.has(p.id);
+                              return (
+                                <tr key={p.id} onClick={() => toggleParcelSelection(p.id)} className={`cursor-pointer transition-colors ${isSelected ? 'bg-amber-600/10' : 'hover:bg-neutral-800'}`}>
+                                  <td className="p-2"><input type="checkbox" checked={isSelected} onChange={() => {}} className="rounded border-neutral-600" /></td>
+                                  <td className="p-2 font-mono text-white">{p.tracking_number}</td>
+                                  <td className="p-2 font-mono text-green-400">{Number(p.cod_amount).toLocaleString()}</td>
+                                  <td className="p-2 font-mono text-orange-400">{Number(p.my_delivery_price).toLocaleString()}</td>
+                                  <td className="p-2 font-mono font-bold text-amber-400">{net.toLocaleString()}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="bg-neutral-800 rounded-lg p-3 mb-4 flex justify-between items-center">
+                        <span className="text-sm text-gray-400">Total Payout Amount:</span>
+                        <span className="text-xl font-black text-amber-400">
+                          {payoutParcels.filter(p => selectedParcelIds.has(p.id)).reduce((s, p) => s + (Number(p.cod_amount) - Number(p.my_delivery_price)), 0).toLocaleString()} DA
+                        </span>
+                      </div>
+                      <div className="flex gap-3 justify-end">
+                        <button onClick={() => setShowPayoutModal(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-neutral-700 transition-colors">Cancel</button>
+                        <button onClick={handleCreatePayout} disabled={payoutLoading || selectedParcelIds.size === 0}
+                          className="px-6 py-2 rounded-lg text-sm font-bold text-black bg-amber-600 hover:bg-amber-500 transition-colors disabled:opacity-30">
+                          {payoutLoading ? 'Creating...' : `Create Payout (${selectedParcelIds.size} parcels)`}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // === SUB-ACCOUNT VIEW ===
+    return (
+      <div className="min-h-screen bg-gray-950 text-gray-100 p-4 md:p-8">
+        <div className="max-w-5xl mx-auto space-y-8">
+          {/* Header */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors mb-2">
+                <ArrowLeft size={16} /> Back to Dashboard
+              </button>
+              <h1 className="text-3xl font-extrabold text-white flex items-center gap-3">
+                <Wallet className="text-amber-400" size={32} /> My Earnings
+              </h1>
+              <p className="text-gray-400 text-sm mt-1">Track delivered orders and payouts from your master account</p>
+            </div>
+            <button onClick={loadMyFinance} disabled={myFinanceLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-amber-700 rounded-lg text-sm font-medium transition-all disabled:opacity-50">
+              <RefreshCw size={16} className={myFinanceLoading ? 'animate-spin' : ''} /> Refresh
+            </button>
+          </div>
+
+          {error && (
+            <div className="bg-red-950/40 border border-red-800 rounded-xl p-4 flex items-center gap-3 text-red-300 text-sm">
+              <ShieldAlert size={18} /> {error}
             </div>
           )}
 
-          {/* Local Wallet Balance Card */}
-          <div className="bg-gradient-to-br from-neutral-900 to-gray-950 border border-amber-600/30 rounded-2xl p-8">
-            <p className="text-gray-400 text-sm font-medium uppercase tracking-wider mb-1">Local Wallet Balance</p>
-            <p className={`text-4xl font-black ${balance >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
-              {balance.toLocaleString()} DA
-            </p>
-            <div className="mt-6 flex gap-3">
-              <button onClick={() => { setShowDeposit(true); setError(null); }}
-                className="flex items-center gap-2 bg-amber-600 hover:bg-amber-500 text-black px-5 py-2.5 rounded-xl font-bold transition-colors">
-                <Plus size={18} /> Deposit
-              </button>
+          {/* Balance Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="bg-gradient-to-br from-amber-950/30 to-gray-950 border border-amber-600/30 rounded-2xl p-6">
+              <div className="p-3 bg-amber-500/10 rounded-xl text-amber-400 w-fit mb-3"><Wallet size={22} /></div>
+              <p className="text-gray-400 text-xs uppercase">Pending Balance</p>
+              <p className="text-3xl font-black text-amber-400 mt-1">{(myBalance?.pendingPayout ?? 0).toLocaleString()} DA</p>
+              <p className="text-xs text-gray-500 mt-2">Awaiting payout from master</p>
+            </div>
+            <div className="bg-gradient-to-br from-green-950/30 to-gray-950 border border-green-600/30 rounded-2xl p-6">
+              <div className="p-3 bg-green-500/10 rounded-xl text-green-400 w-fit mb-3"><CheckCircle size={22} /></div>
+              <p className="text-gray-400 text-xs uppercase">Total Settled</p>
+              <p className="text-3xl font-black text-green-400 mt-1">{(myBalance?.settledAmount ?? 0).toLocaleString()} DA</p>
+              <p className="text-xs text-gray-500 mt-2">{myPayouts.filter(p => p.status === 'accepted').length} payouts received</p>
+            </div>
+            <div className="bg-gradient-to-br from-blue-950/30 to-gray-950 border border-blue-600/30 rounded-2xl p-6">
+              <div className="p-3 bg-blue-500/10 rounded-xl text-blue-400 w-fit mb-3"><Package size={22} /></div>
+              <p className="text-gray-400 text-xs uppercase">Delivered Orders</p>
+              <p className="text-3xl font-black text-blue-400 mt-1">{myBalance?.totalDelivered ?? 0}</p>
+              <p className="text-xs text-gray-500 mt-2">{(myBalance?.totalCod ?? 0).toLocaleString()} DA total COD</p>
             </div>
           </div>
 
-          {/* Deposit Form */}
-          {showDeposit && (
-            <div className="bg-neutral-900 border border-amber-600/30 rounded-2xl p-6">
-              <h3 className="text-lg font-bold text-white mb-4">Add Funds</h3>
-              <div className="flex gap-3 items-end">
-                <div className="flex-1">
-                  <label className="text-xs text-gray-500 uppercase mb-1 block">Amount (DA)</label>
-                  <input type="number" value={depositAmount} onChange={e => setDepositAmount(e.target.value)}
-                    className="w-full bg-black border border-neutral-700 text-white px-4 py-2.5 rounded-xl focus:border-amber-500 focus:outline-none"
-                    placeholder="10000" min="1" />
-                </div>
-                <button onClick={handleDeposit} disabled={processingDeposit || !depositAmount}
-                  className="bg-amber-600 hover:bg-amber-500 text-black px-6 py-2.5 rounded-xl font-bold transition-colors disabled:opacity-50">
-                  {processingDeposit ? 'Processing...' : 'Confirm'}
-                </button>
-                <button onClick={() => setShowDeposit(false)}
-                  className="px-4 py-2.5 text-gray-400 hover:text-white transition-colors">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Local Transaction History */}
+          {/* Delivered Orders */}
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
             <div className="p-5 border-b border-neutral-800">
-              <h2 className="text-lg font-bold text-white">Local Transaction History</h2>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2"><Package size={18} className="text-blue-400" /> Delivered Orders</h2>
             </div>
-            {walletLoading ? (
+            {myFinanceLoading ? (
               <div className="p-10 text-center text-gray-500"><RefreshCw size={24} className="animate-spin mx-auto mb-2" />Loading...</div>
-            ) : transactions.length === 0 ? (
-              <div className="p-10 text-center text-gray-500">No transactions yet.</div>
+            ) : myDeliveredParcels.length === 0 ? (
+              <div className="p-10 text-center text-gray-500">No delivered orders yet.</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-neutral-950">
                     <tr>
-                      {['Type', 'Amount', 'Description', 'Date'].map(h => (
+                      {['Tracking', 'COD Amount', 'Delivery Fee', 'Net Earnings', 'Status', 'Date'].map(h => (
                         <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-800">
-                    {transactions.map(tx => (
-                      <tr key={tx.id} className="hover:bg-neutral-800/20 transition-colors">
+                    {myDeliveredParcels.slice(0, 50).map(p => (
+                      <tr key={p.id} className="hover:bg-neutral-800/20 transition-colors">
+                        <td className="px-5 py-3.5 font-mono text-xs text-white">{p.tracking_number}</td>
+                        <td className="px-5 py-3.5 font-mono text-green-400">{Number(p.cod_amount).toLocaleString()} DA</td>
+                        <td className="px-5 py-3.5 font-mono text-orange-400">{Number(p.my_delivery_price).toLocaleString()} DA</td>
+                        <td className="px-5 py-3.5 font-mono font-bold text-amber-400">{(Number(p.cod_amount) - Number(p.my_delivery_price)).toLocaleString()} DA</td>
                         <td className="px-5 py-3.5">
                           <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
-                            tx.type === 'deposit' ? 'bg-green-950/40 text-green-400 border border-green-800/40' :
-                            tx.type === 'withdrawal' ? 'bg-red-950/40 text-red-400 border border-red-800/40' :
-                            tx.type === 'delivery_fee' ? 'bg-blue-950/40 text-blue-400 border border-blue-800/40' :
-                            tx.type === 'return_fee' ? 'bg-orange-950/40 text-orange-400 border border-orange-800/40' :
-                            'bg-gray-800 text-gray-400'
-                          }`}>
-                            {tx.type.replace(/_/g, ' ')}
-                          </span>
+                            p.settled ? 'bg-green-950/40 text-green-400 border border-green-800/40' : 'bg-yellow-950/40 text-yellow-400 border border-yellow-800/40'
+                          }`}>{p.settled ? 'Settled' : 'Pending'}</span>
                         </td>
-                        <td className={`px-5 py-3.5 font-mono font-bold ${
-                          tx.amount >= 0 ? 'text-green-400' : 'text-red-400'
-                        }`}>
-                          {(tx.amount ?? 0) >= 0 ? '+' : ''}{(tx.amount ?? 0).toLocaleString()} DA
+                        <td className="px-5 py-3.5 text-gray-500 text-xs">{p.delivered_at ? new Date(p.delivered_at).toLocaleDateString() : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {myDeliveredParcels.length > 50 && (
+                  <div className="px-5 py-4 text-center text-xs text-gray-500 border-t border-neutral-800">Showing first 50 of {myDeliveredParcels.length}</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Payout History */}
+          {myPayouts.length > 0 && (
+            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
+              <div className="p-5 border-b border-neutral-800">
+                <h2 className="text-lg font-bold text-white">Payout History</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-neutral-950">
+                    <tr>
+                      {['Reference', 'Amount', 'Status', 'Date'].map(h => (
+                        <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-800">
+                    {myPayouts.map(p => (
+                      <tr key={p.id} className="hover:bg-neutral-800/20 transition-colors">
+                        <td className="px-5 py-3.5 font-mono text-xs text-blue-400">{p.reference || p.id.slice(0, 8)}</td>
+                        <td className="px-5 py-3.5 font-mono font-bold text-white">{Number(p.amount).toLocaleString()} DA</td>
+                        <td className="px-5 py-3.5">
+                          <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                            p.status === 'accepted' ? 'bg-green-950/40 text-green-400 border border-green-800/40' :
+                            p.status === 'rejected' ? 'bg-red-950/40 text-red-400 border border-red-800/40' :
+                            'bg-yellow-950/40 text-yellow-400 border border-yellow-800/40'
+                          }`}>{p.status}</span>
                         </td>
-                        <td className="px-5 py-3.5 text-gray-400 text-xs">{tx.description || '—'}</td>
-                        <td className="px-5 py-3.5 text-gray-500 text-xs">{new Date(tx.created_at).toLocaleDateString()}</td>
+                        <td className="px-5 py-3.5 text-gray-500 text-xs">{new Date(p.created_at).toLocaleDateString()}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     );
