@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ResellerParcel } from '../types';
+import { ResellerParcel, ZrCredentials } from '../types';
 import { getMyParcels } from '../services/resellerApi';
+import { generateIndividualLabels } from '../services/zrExpressApi';
 import LoadingSpinner from './LoadingSpinner';
 import {
   Package, Truck, RefreshCw, Search,
@@ -10,13 +11,15 @@ import {
 
 interface ZrSubAccountContentProps {
   profileId: string;
+  zrCredentials?: ZrCredentials | null;
 }
 
-const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId }) => {
+const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zrCredentials }) => {
   const navigate = useNavigate();
   const [parcels, setParcels] = useState<ResellerParcel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [labelLoading, setLabelLoading] = useState<string | null>(null);
 
   const fetchParcels = async () => {
     setLoading(true);
@@ -109,13 +112,44 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId }) 
                         {new Date(parcel.created_at).toLocaleDateString()}
                       </td>
                       <td className="p-4 text-center">
-                        <button
-                          onClick={() => navigate(`/track?tracking=${parcel.tracking_number}&carrier=zrexpress`)}
-                          className="p-2 hover:bg-amber-600/20 rounded-lg text-amber-400 transition-colors"
-                          title="View Details"
-                        >
-                          <Search size={18} />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => navigate(`/track?tracking=${parcel.tracking_number}&carrier=zrexpress`)}
+                            className="p-2 hover:bg-amber-600/20 rounded-lg text-amber-400 transition-colors"
+                            title="View Details"
+                          >
+                            <Search size={18} />
+                          </button>
+                          {zrCredentials && (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (labelLoading) return;
+                                setLabelLoading(parcel.tracking_number);
+                                try {
+                                  const result = await generateIndividualLabels(zrCredentials, { trackingNumbers: [parcel.tracking_number] });
+                                  if (result.parcelLabelFiles.length > 0) {
+                                    window.open(result.parcelLabelFiles[0].fileUrl, '_blank');
+                                  } else {
+                                    setError('Label not available for this parcel');
+                                  }
+                                } catch (err: any) {
+                                  setError('Print failed: ' + (err?.message || 'unknown error'));
+                                }
+                                setLabelLoading(null);
+                              }}
+                              disabled={labelLoading !== null}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/40 rounded-lg text-amber-400 text-xs font-bold transition-colors disabled:opacity-30"
+                              title="Print Label"
+                            >
+                              {labelLoading === parcel.tracking_number ? (
+                                <><RefreshCw size={14} className="animate-spin" /> Label</>
+                              ) : (
+                                <><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Label</>
+                              )}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
