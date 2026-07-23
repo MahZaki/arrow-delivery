@@ -20,8 +20,8 @@ export async function saveParcel(
   zrDeliveryPrice: number,
   myDeliveryPrice: number,
   state: string
-): Promise<void> {
-  const { error } = await supabase.from('reseller_parcels').insert({
+): Promise<string> {
+  const { data, error } = await supabase.from('reseller_parcels').insert({
     profile_id: profileId,
     zr_parcel_id: zrParcelId,
     tracking_number: trackingNumber,
@@ -29,7 +29,8 @@ export async function saveParcel(
     zr_delivery_price: zrDeliveryPrice,
     my_delivery_price: myDeliveryPrice,
     state,
-  });
+  }).select('id').single();
 
   if (error) throw new Error(error.message);
+  return data.id;
 }

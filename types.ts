@@ -365,6 +365,108 @@ export interface ZrTerritorySearchRequest {
 
 export type ZrTerritorySearchResponse = ZrPaginatedResponse<ZrTerritory>;
 
+// ============================================================================
+// ZR Workflows (State machine)
+// ============================================================================
+
+export interface ZrWorkflowState {
+  id: string;
+  name: string;
+  description: string;
+  isBlocking: boolean;
+  isLocked: boolean;
+  visibleFor: number;
+  editableBy: number;
+  color: string;
+}
+
+export interface ZrWorkflow {
+  id: string;
+  name: string;
+  description: string;
+  states: ZrWorkflowState[];
+}
+
+export interface ZrWorkflowSearchRequest {
+  pageNumber: number;
+  pageSize: number;
+  orderBy?: string[];
+  keyword?: string;
+}
+
+export type ZrWorkflowSearchResponse = ZrPaginatedResponse<ZrWorkflow>;
+
+export interface ZrUpdateParcelStateRequest {
+  stateId: string;
+  situationId?: string;
+}
+
+// ============================================================================
+// ZR Customers
+// ============================================================================
+
+export interface ZrCreateCustomerRequest {
+  name: string;
+  phone: {
+    number1: string;
+    number2?: string;
+    number3?: string;
+  };
+  email?: string;
+}
+
+export interface ZrCustomerSearchRequest {
+  pageNumber: number;
+  pageSize: number;
+  orderBy?: string[];
+  keyword?: string;
+}
+
+export type ZrCustomerSearchResponse = ZrPaginatedResponse<ZrCustomer>;
+
+// ============================================================================
+// ZR Hubs
+// ============================================================================
+
+export interface ZrHub {
+  id: string;
+  name: string;
+  type: string;
+  address: ZrDeliveryAddress;
+  services?: Array<{ id: string; type: string }>;
+}
+
+export interface ZrHubSearchRequest {
+  pageNumber: number;
+  pageSize: number;
+  orderBy?: string[];
+  keyword?: string;
+  hubIds?: string[];
+  territoryId?: string;
+}
+
+export type ZrHubSearchResponse = ZrPaginatedResponse<ZrHub>;
+
+// ============================================================================
+// ZR Supplier Info
+// ============================================================================
+
+export interface ZrSupplierInfo {
+  id: string;
+  name: string;
+  cityTerritoryId: string;
+  hubId: string;
+  hubCityTerritoryId: string;
+  phone: ZrPhone;
+  supportPhone: ZrPhone;
+  priceListId?: string;
+  isActive: boolean;
+}
+
+// ============================================================================
+// User & Reseller types
+// ============================================================================
+
 export interface UserProfile {
   id: string;
   email: string;

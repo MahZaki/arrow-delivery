@@ -2,7 +2,10 @@ import {
   ZrParcel, ZrParcelSearchRequest, ZrParcelSearchResponse,
   ZrCreateParcelRequest, ZrCreateParcelResponse,
   ZrTerritory, ZrTerritorySearchRequest, ZrTerritorySearchResponse,
-  ZrDeliveryRate, ZrCredentials
+  ZrDeliveryRate, ZrCredentials, ZrUpdateParcelStateRequest,
+  ZrWorkflowSearchRequest, ZrWorkflowSearchResponse,
+  ZrCreateCustomerRequest, ZrCustomer, ZrCustomerSearchRequest, ZrCustomerSearchResponse,
+  ZrHubSearchRequest, ZrHubSearchResponse, ZrSupplierInfo,
 } from '../types';
 
 const ZR_API_BASE = '/api/zr';
@@ -113,6 +116,17 @@ export async function getDeliveryRate(
   return zrRequest<ZrDeliveryRate>(creds, 'GET', `/delivery-pricing/rates/${encodeURIComponent(toTerritoryId)}`);
 }
 
+export async function getAllRates(creds: ZrCredentials): Promise<ZrDeliveryRate[]> {
+  const cacheKey = `zr_all_rates`;
+  const cached = getCached<ZrDeliveryRate[]>(cacheKey);
+  if (cached) return cached;
+  const result = await zrRequest<ZrDeliveryRate[]>(creds, 'GET', '/delivery-pricing/rates');
+  if (result.length > 0) {
+    setCache(cacheKey, result);
+  }
+  return result;
+}
+
 export async function getParcelById(
   creds: ZrCredentials,
   id: string
@@ -166,6 +180,65 @@ export async function getAllWilayas(creds: ZrCredentials): Promise<ZrTerritory[]
 export async function getCommunesByWilaya(creds: ZrCredentials, wilayaId: string): Promise<ZrTerritory[]> {
   const all = await fetchAllTerritories(creds);
   return all.filter(t => t.parentId === wilayaId);
+}
+
+// ============================================================================
+// Phase 2A: Workflows & State Management
+// ============================================================================
+
+export async function searchWorkflows(
+  creds: ZrCredentials,
+  params: ZrWorkflowSearchRequest
+): Promise<ZrWorkflowSearchResponse> {
+  return zrRequest<ZrWorkflowSearchResponse>(creds, 'POST', '/workflows/search', params);
+}
+
+export async function updateParcelState(
+  creds: ZrCredentials,
+  parcelId: string,
+  data: ZrUpdateParcelStateRequest
+): Promise<void> {
+  await zrRequest(creds, 'PATCH', `/parcels/${encodeURIComponent(parcelId)}/state`, data);
+}
+
+// ============================================================================
+// Phase 2A: Customer Management
+// ============================================================================
+
+export async function createCustomer(
+  creds: ZrCredentials,
+  data: ZrCreateCustomerRequest
+): Promise<ZrCustomer> {
+  return zrRequest<ZrCustomer>(creds, 'POST', '/customers', data);
+}
+
+export async function searchCustomers(
+  creds: ZrCredentials,
+  params: ZrCustomerSearchRequest
+): Promise<ZrCustomerSearchResponse> {
+  return zrRequest<ZrCustomerSearchResponse>(creds, 'POST', '/customers/search', params);
+}
+
+// ============================================================================
+// Phase 2A: Hubs
+// ============================================================================
+
+export async function searchHubs(
+  creds: ZrCredentials,
+  params: ZrHubSearchRequest
+): Promise<ZrHubSearchResponse> {
+  return zrRequest<ZrHubSearchResponse>(creds, 'POST', '/hubs/search', params);
+}
+
+// ============================================================================
+// Phase 2A: Supplier Info
+// ============================================================================
+
+export async function getSupplierInfo(
+  creds: ZrCredentials,
+  supplierId: string
+): Promise<ZrSupplierInfo> {
+  return zrRequest<ZrSupplierInfo>(creds, 'POST', `/supplier/${encodeURIComponent(supplierId)}`);
 }
 
 export async function getParcelStats(
