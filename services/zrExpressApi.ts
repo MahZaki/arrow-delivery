@@ -116,15 +116,20 @@ export async function getDeliveryRate(
   return zrRequest<ZrDeliveryRate>(creds, 'GET', `/delivery-pricing/rates/${encodeURIComponent(toTerritoryId)}`);
 }
 
+interface ZrGetAllRatesResponse {
+  rates: ZrDeliveryRate[] | null;
+}
+
 export async function getAllRates(creds: ZrCredentials): Promise<ZrDeliveryRate[]> {
   const cacheKey = `zr_all_rates`;
   const cached = getCached<ZrDeliveryRate[]>(cacheKey);
   if (cached) return cached;
-  const result = await zrRequest<ZrDeliveryRate[]>(creds, 'GET', '/delivery-pricing/rates');
-  if (result.length > 0) {
-    setCache(cacheKey, result);
+  const result = await zrRequest<ZrGetAllRatesResponse>(creds, 'GET', '/delivery-pricing/rates');
+  const rates = result.rates ?? [];
+  if (rates.length > 0) {
+    setCache(cacheKey, rates);
   }
-  return result;
+  return rates;
 }
 
 export async function getParcelById(
