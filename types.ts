@@ -721,6 +721,107 @@ export interface ZrSupplierBalance {
 }
 
 // ============================================================================
+// Phase 2D: Claims Management
+// ============================================================================
+
+export interface ZrClaimCategory {
+  id: string;
+  name: string;
+}
+
+export interface ZrClaimParcel {
+  id: string;
+  city: string;
+  district: string;
+  trackingNumber: string;
+  stateName: string;
+  customerFullName: string;
+  phone: string;
+}
+
+export interface ZrClaimState {
+  id: string;
+  name: string;
+  description: string;
+  isBlocking: boolean;
+  isLocked: boolean;
+  color: string;
+}
+
+export interface ZrClaimComment {
+  id: string;
+  claimId: string;
+  content: string;
+  modifiedBy: { id: string; fullName: string };
+  createdAt: string;
+}
+
+export interface ZrClaim {
+  id: string;
+  title: string;
+  description: string;
+  parcel: ZrClaimParcel;
+  state: ZrClaimState;
+  category: { id: string; name: string };
+  comments?: ZrClaimComment[];
+  createdAt: string;
+  lastModifiedAt: string;
+}
+
+export interface ZrClaimSearchRequest {
+  pageNumber: number;
+  pageSize: number;
+  orderBy?: string[];
+  keyword?: string;
+  includeComments?: boolean;
+}
+
+export interface ZrClaimSearchResponse {
+  items: ZrClaim[];
+  pageNumber: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface ZrCreateClaimRequest {
+  title: string;
+  description: string;
+  categoryId: string;
+  parcelId: string;
+}
+
+export interface ZrClaimStateHistoryEntry {
+  previousState?: ZrClaimState;
+  newState: ZrClaimState;
+  modifiedBy: { id: string; fullName: string };
+  createdAt: string;
+  comment?: string | null;
+}
+
+// ============================================================================
+// Phase 2D: Webhooks
+// ============================================================================
+
+export interface ZrWebhookEndpoint {
+  id: string;
+  url: string;
+  description?: string;
+  eventTypes?: string[] | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ZrCreateWebhookRequest {
+  url: string;
+  description?: string;
+  eventTypes?: string[] | null;
+  headers?: Record<string, string>;
+}
+
+// ============================================================================
 // User & Reseller types
 // ============================================================================
 

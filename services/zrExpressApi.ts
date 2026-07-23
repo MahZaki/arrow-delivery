@@ -17,6 +17,9 @@ import {
   ZrCreateModificationRequest,
   ZrSupplierPayment, ZrSupplierPaymentSearchRequest, ZrSupplierPaymentSearchResponse,
   ZrSupplierBalance,
+  ZrClaim, ZrClaimSearchRequest, ZrClaimSearchResponse, ZrCreateClaimRequest,
+  ZrClaimCategory, ZrClaimComment, ZrClaimStateHistoryEntry,
+  ZrWebhookEndpoint, ZrCreateWebhookRequest,
 } from '../types';
 
 const ZR_API_BASE = '/api/zr';
@@ -406,4 +409,98 @@ export async function acceptSupplierPayment(
   return zrRequest<{ id: string }>(creds, 'PUT', `/supplier-payment/${supplierPaymentId}`, {
     supplierPaymentId,
   });
+}
+
+// ============================================================================
+// Phase 2D: Claims Management
+// ============================================================================
+
+export async function searchClaims(
+  creds: ZrCredentials,
+  params: ZrClaimSearchRequest
+): Promise<ZrClaimSearchResponse> {
+  return zrRequest<ZrClaimSearchResponse>(creds, 'POST', '/claims/search', params);
+}
+
+export async function getClaim(
+  creds: ZrCredentials,
+  claimId: string,
+  includeComments: boolean = true
+): Promise<ZrClaim> {
+  return zrRequest<ZrClaim>(creds, 'POST', `/claims/${claimId}`, { claimId, includeComments });
+}
+
+export async function createClaim(
+  creds: ZrCredentials,
+  data: ZrCreateClaimRequest
+): Promise<{ id: string }> {
+  return zrRequest<{ id: string }>(creds, 'POST', '/claims', data);
+}
+
+export async function updateClaim(
+  creds: ZrCredentials,
+  claimId: string,
+  data: Partial<ZrCreateClaimRequest>
+): Promise<{ id: string }> {
+  return zrRequest<{ id: string }>(creds, 'PATCH', `/claims/${claimId}`, { claimId, ...data });
+}
+
+export async function deleteClaim(
+  creds: ZrCredentials,
+  claimId: string
+): Promise<{ id: string }> {
+  return zrRequest<{ id: string }>(creds, 'DELETE', `/claims/${claimId}`);
+}
+
+export async function searchClaimCategories(
+  creds: ZrCredentials,
+  params: { pageNumber: number; pageSize: number } = { pageNumber: 1, pageSize: 100 }
+): Promise<{ items: ZrClaimCategory[]; totalCount: number }> {
+  return zrRequest<{ items: ZrClaimCategory[]; totalCount: number }>(creds, 'POST', '/claim-categories/search', params);
+}
+
+export async function getClaimStateHistory(
+  creds: ZrCredentials,
+  claimId: string
+): Promise<ZrClaimStateHistoryEntry[]> {
+  return zrRequest<ZrClaimStateHistoryEntry[]>(creds, 'GET', `/claims/${claimId}/state-histories`);
+}
+
+export async function createClaimComment(
+  creds: ZrCredentials,
+  claimId: string,
+  comment: string
+): Promise<{ id: string }> {
+  return zrRequest<{ id: string }>(creds, 'PATCH', `/claim-comments/${claimId}`, { claimId, comment });
+}
+
+// ============================================================================
+// Phase 2D: Webhooks
+// ============================================================================
+
+export async function listWebhookEndpoints(
+  creds: ZrCredentials
+): Promise<{ endpoints: ZrWebhookEndpoint[] }> {
+  return zrRequest<{ endpoints: ZrWebhookEndpoint[] }>(creds, 'GET', '/webhooks/endpoints');
+}
+
+export async function createWebhookEndpoint(
+  creds: ZrCredentials,
+  data: ZrCreateWebhookRequest
+): Promise<ZrWebhookEndpoint> {
+  return zrRequest<ZrWebhookEndpoint>(creds, 'POST', '/webhooks/endpoints', data);
+}
+
+export async function deleteWebhookEndpoint(
+  creds: ZrCredentials,
+  endpointId: string
+): Promise<void> {
+  return zrRequest<void>(creds, 'DELETE', `/webhooks/endpoints/${endpointId}`);
+}
+
+export async function getWebhookEndpointSecret(
+  creds: ZrCredentials,
+  endpointId: string
+): Promise<{ secret: string }> {
+  return zrRequest<{ secret: string }>(creds, 'GET', `/webhooks/endpoints/${endpointId}/secret`);
 }

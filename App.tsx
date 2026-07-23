@@ -12,6 +12,8 @@ import AdminLogin from './pages/AdminLogin';
 import ArchivedImport from './pages/ArchivedImport';
 import Finance from './pages/Finance';
 import ZrCreateOrder from './pages/ZrCreateOrder';
+import Claims from './pages/Claims';
+import Webhooks from './pages/Webhooks';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
 import { CarrierProvider } from './contexts/CarrierContext';
@@ -38,6 +40,8 @@ const App: React.FC = () => {
                   <Route path="/archive" element={<ArchivedImport />} />
                   <Route path="/finance" element={<Finance />} />
                   <Route path="/zr-create-order" element={<ZrCreateOrder />} />
+                  <Route path="/claims" element={<Claims />} />
+                  <Route path="/webhooks" element={<Webhooks />} />
                   <Route path="/admin" element={<Admin />} />
                 </Route>
               </Routes>
