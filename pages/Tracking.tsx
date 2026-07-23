@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Search, MapPin, Calendar, MessageSquare, AlertCircle, Package, Phone, Wallet, Banknote, Tag, Truck, Printer, ChevronDown, RefreshCw } from 'lucide-react';
+import { Search, MapPin, Calendar, MessageSquare, AlertCircle, Package, Phone, Wallet, Banknote, Tag, Truck, Printer, X, RefreshCw, RotateCcw, ArrowLeftRight, FileEdit } from 'lucide-react';
 import { trackOrder } from '../services/api';
-import { getParcelByTracking, getParcelStateHistory, generateIndividualLabels, searchWorkflows, updateParcelState } from '../services/zrExpressApi';
-import { TrackingInfo, ZrParcel, ZrCredentials, ZrParcelStateHistoryEntry, ZrWorkflowState } from '../types';
+import { getParcelByTracking, getParcelStateHistory, generateIndividualLabels, createParcelRefund, createParcelExchange, createParcelModificationRequest } from '../services/zrExpressApi';
+import { TrackingInfo, ZrParcel, ZrCredentials, ZrParcelStateHistoryEntry } from '../types';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatusBadge from '../components/StatusBadge';
 import { STATUS_TRANSLATIONS, WILAYAS } from '../constants';
@@ -22,9 +22,15 @@ const Tracking: React.FC = () => {
   const [zrCreds, setZrCreds] = useState<ZrCredentials | null>(null);
   const [zrStateHistory, setZrStateHistory] = useState<ZrParcelStateHistoryEntry[]>([]);
   const [labelLoading, setLabelLoading] = useState(false);
-  const [workflowStates, setWorkflowStates] = useState<ZrWorkflowState[]>([]);
-  const [showStateDropdown, setShowStateDropdown] = useState(false);
-  const [stateTransitionLoading, setStateTransitionLoading] = useState(false);
+  const [actionModal, setActionModal] = useState<'refund' | 'exchange' | 'modify' | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundDescription, setRefundDescription] = useState('');
+  const [refundDeliveryType, setRefundDeliveryType] = useState<'home' | 'pickup-point'>('home');
+  const [exchangeAmount, setExchangeAmount] = useState('');
+  const [exchangeDescription, setExchangeDescription] = useState('');
+  const [modifyAmount, setModifyAmount] = useState('');
+  const [modifyPhone, setModifyPhone] = useState('');
 
   useEffect(() => {
     resolveZrCredentials().then(setZrCreds);
@@ -61,12 +67,6 @@ const Tracking: React.FC = () => {
         const parcel = await getParcelByTracking(zrCreds, number);
         setZrData(parcel);
         getParcelStateHistory(zrCreds, parcel.id).then(setZrStateHistory).catch(() => setZrStateHistory([]));
-        searchWorkflows(zrCreds, { pageNumber: 1, pageSize: 50 })
-          .then(res => {
-            const allStates = res.items.flatMap(w => w.states.filter(s => !s.isLocked));
-            setWorkflowStates(allStates);
-          })
-          .catch(() => {});
       } catch (err: any) {
         setError(err.message || 'Failed to fetch ZR Express tracking info.');
       } finally {
@@ -189,84 +189,52 @@ const Tracking: React.FC = () => {
                 <div className="text-gray-500 text-xs mt-1 flex items-center gap-1">
                   <Calendar size={12} /> Created on {new Date(zrData.createdAt).toLocaleDateString()}
                 </div>
-                <button
-                  onClick={async () => {
-                    if (!zrCreds || labelLoading) return;
-                    setLabelLoading(true);
-                    try {
-                      const result = await generateIndividualLabels(zrCreds, { trackingNumbers: [zrData.trackingNumber] });
-                      if (result.parcelLabelFiles.length > 0) {
-                        window.open(result.parcelLabelFiles[0].fileUrl, '_blank');
-                      }
-                    } catch {}
-                    setLabelLoading(false);
-                  }}
-                  disabled={labelLoading}
-                  className="mt-2 flex items-center gap-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-black px-4 py-2 rounded-lg text-sm font-bold transition-colors"
-                >
-                  <Printer size={16} />
-                  {labelLoading ? 'Generating...' : 'Print Label'}
-                </button>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    onClick={async () => {
+                      if (!zrCreds || labelLoading) return;
+                      setLabelLoading(true);
+                      try {
+                        const result = await generateIndividualLabels(zrCreds, { trackingNumbers: [zrData.trackingNumber] });
+                        if (result.parcelLabelFiles.length > 0) {
+                          window.open(result.parcelLabelFiles[0].fileUrl, '_blank');
+                        }
+                      } catch {}
+                      setLabelLoading(false);
+                    }}
+                    disabled={labelLoading}
+                    className="flex items-center gap-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-black px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+                  >
+                    <Printer size={16} />
+                    {labelLoading ? 'Generating...' : 'Print Label'}
+                  </button>
+                  <button
+                    onClick={() => { setRefundAmount(String(zrData.amount)); setRefundDescription(''); setRefundDeliveryType(zrData.deliveryType === 'pickup-point' ? 'pickup-point' : 'home'); setActionModal('refund'); }}
+                    className="flex items-center gap-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+                  >
+                    <RotateCcw size={16} /> Refund
+                  </button>
+                  <button
+                    onClick={() => { setExchangeAmount(String(zrData.amount)); setExchangeDescription(''); setActionModal('exchange'); }}
+                    className="flex items-center gap-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+                  >
+                    <ArrowLeftRight size={16} /> Exchange
+                  </button>
+                  <button
+                    onClick={() => { setModifyAmount(''); setModifyPhone(''); setActionModal('modify'); }}
+                    className="flex items-center gap-2 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+                  >
+                    <FileEdit size={16} /> Modify
+                  </button>
+                </div>
               </div>
-              <div className="relative">
-                <button
-                  onClick={() => setShowStateDropdown(!showStateDropdown)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm text-white transition-colors hover:opacity-90"
-                  style={{ backgroundColor: zrData.state.color ? `#${zrData.state.color}` : '#6b7280' }}
-                >
-                  {stateTransitionLoading ? (
-                    <><RefreshCw size={14} className="animate-spin" /> Updating...</>
-                  ) : (
-                    <>{zrData.state.name.replace(/_/g, ' ')}
-                      {zrData.situation && <span className="ml-1 opacity-75">· {zrData.situation.name}</span>}
-                      <ChevronDown size={14} /></>
-                  )}
-                </button>
-
-                {showStateDropdown && workflowStates.length > 0 && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowStateDropdown(false)} />
-                    <div className="absolute right-0 top-full mt-2 w-64 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl z-50 max-h-80 overflow-y-auto">
-                      <div className="p-2 text-[10px] text-gray-500 uppercase tracking-wider px-3 pt-3 pb-1">Change State</div>
-                      {workflowStates.map(st => {
-                        const isCurrent = st.id === zrData.state.id;
-                        return (
-                          <button
-                            key={st.id}
-                            disabled={isCurrent || stateTransitionLoading}
-                            onClick={async () => {
-                              if (isCurrent || !zrCreds) return;
-                              setStateTransitionLoading(true);
-                              setShowStateDropdown(false);
-                              try {
-                                await updateParcelState(zrCreds, zrData.id, { stateId: st.id });
-                                const updated = await getParcelByTracking(zrCreds, zrData.trackingNumber);
-                                setZrData(updated);
-                                getParcelStateHistory(zrCreds, updated.id).then(setZrStateHistory).catch(() => setZrStateHistory([]));
-                              } catch (err: any) {
-                                setError('State change failed: ' + (err?.message || 'unknown error'));
-                              }
-                              setStateTransitionLoading(false);
-                            }}
-                            className={`w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors ${
-                              isCurrent
-                                ? 'bg-amber-600/20 text-amber-300 cursor-not-allowed'
-                                : 'text-gray-300 hover:bg-neutral-800'
-                            }`}
-                          >
-                            <span
-                              className="w-3 h-3 rounded-full shrink-0"
-                              style={{ backgroundColor: st.color ? `#${st.color}` : '#6b7280' }}
-                            />
-                            <span className="text-sm font-medium">{st.name.replace(/_/g, ' ')}</span>
-                            {isCurrent && <span className="text-[10px] ml-auto text-amber-500">(current)</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
+              <span
+                className="inline-block px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm text-white"
+                style={{ backgroundColor: zrData.state.color ? `#${zrData.state.color}` : '#6b7280' }}
+              >
+                {zrData.state.name.replace(/_/g, ' ')}
+                {zrData.situation && <span className="ml-2 opacity-75">· {zrData.situation.name}</span>}
+              </span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -372,6 +340,146 @@ const Tracking: React.FC = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Action Modals */}
+      {actionModal === 'refund' && zrData && zrCreds && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setActionModal(null)}>
+          <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2"><RotateCcw size={18} className="text-red-400" /> Create Refund</h3>
+              <button onClick={() => setActionModal(null)} className="text-gray-500 hover:text-white"><X size={20} /></button>
+            </div>
+            <div className="text-xs text-gray-500 font-mono mb-4 bg-neutral-800 rounded-lg px-3 py-2">{zrData.trackingNumber}</div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-2">Amount (DA)</label>
+              <input type="number" value={refundAmount} onChange={e => setRefundAmount(e.target.value)} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-2">Delivery Type</label>
+              <select value={refundDeliveryType} onChange={e => setRefundDeliveryType(e.target.value as any)} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm">
+                <option value="home">Home</option>
+                <option value="pickup-point">Pickup Point</option>
+              </select>
+            </div>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
+              <input type="text" value={refundDescription} onChange={e => setRefundDescription(e.target.value)} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setActionModal(null)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-neutral-700 transition-colors">Cancel</button>
+              <button onClick={async () => {
+                if (!zrCreds || !zrData || actionLoading) return;
+                setActionLoading(true);
+                try {
+                  await createParcelRefund(zrCreds, {
+                    customer: { customerId: zrData.customer.customerId, name: zrData.customer.name, phone: { number1: zrData.customer.phone.number1 } },
+                    deliveryAddress: { cityTerritoryId: zrData.deliveryAddress.cityTerritoryId, districtTerritoryId: zrData.deliveryAddress.districtTerritoryId, street: zrData.deliveryAddress.street },
+                    hubId: zrData.deliveryAddress.hubId,
+                    deliveryType: refundDeliveryType,
+                    description: refundDescription || 'Refund',
+                    amount: Number(refundAmount),
+                  });
+                  setActionModal(null);
+                  setError('Refund created successfully');
+                } catch (err: any) { setError('Refund failed: ' + (err?.message || 'unknown error')); }
+                setActionLoading(false);
+              }} disabled={actionLoading} className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-500 transition-colors disabled:opacity-30">
+                {actionLoading ? 'Creating...' : 'Create Refund'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {actionModal === 'exchange' && zrData && zrCreds && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setActionModal(null)}>
+          <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2"><ArrowLeftRight size={18} className="text-blue-400" /> Create Exchange</h3>
+              <button onClick={() => setActionModal(null)} className="text-gray-500 hover:text-white"><X size={20} /></button>
+            </div>
+            <div className="text-xs text-gray-500 font-mono mb-4 bg-neutral-800 rounded-lg px-3 py-2">{zrData.trackingNumber}</div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-2">Amount (DA)</label>
+              <input type="number" value={exchangeAmount} onChange={e => setExchangeAmount(e.target.value)} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
+              <input type="text" value={exchangeDescription} onChange={e => setExchangeDescription(e.target.value)} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
+            </div>
+            <div className="mb-6 text-xs text-gray-500 bg-neutral-800 rounded-lg px-3 py-2">
+              Creates an exchange parcel linked to the original. Products and weight from the original parcel will be used.
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setActionModal(null)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-neutral-700 transition-colors">Cancel</button>
+              <button onClick={async () => {
+                if (!zrCreds || !zrData || actionLoading) return;
+                setActionLoading(true);
+                try {
+                  const products = (zrData.orderedProducts || []).length > 0
+                    ? zrData.orderedProducts.map(p => ({ productId: p.productId, productName: p.productName, unitPrice: p.unitPrice, quantity: p.quantity, length: p.dimensions?.length || 10, width: p.dimensions?.width || 10, height: p.dimensions?.height || 10, stockType: p.stockType || 'none' }))
+                    : [{ productName: 'Exchange', unitPrice: Number(exchangeAmount), quantity: 1, length: 10, width: 10, height: 10, stockType: 'none' }];
+                  await createParcelExchange(zrCreds, {
+                    customer: { customerId: zrData.customer.customerId, name: zrData.customer.name, phone: { number1: zrData.customer.phone.number1 } },
+                    orderedProducts: products,
+                    weight: { weight: zrData.weight?.weight || 0.5 },
+                    originalParcelId: zrData.id,
+                    amount: Number(exchangeAmount),
+                    description: exchangeDescription || 'Exchange',
+                  });
+                  setActionModal(null);
+                  setError('Exchange created successfully');
+                } catch (err: any) { setError('Exchange failed: ' + (err?.message || 'unknown error')); }
+                setActionLoading(false);
+              }} disabled={actionLoading} className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors disabled:opacity-30">
+                {actionLoading ? 'Creating...' : 'Create Exchange'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {actionModal === 'modify' && zrData && zrCreds && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setActionModal(null)}>
+          <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2"><FileEdit size={18} className="text-emerald-400" /> Modification Request</h3>
+              <button onClick={() => setActionModal(null)} className="text-gray-500 hover:text-white"><X size={20} /></button>
+            </div>
+            <div className="text-xs text-gray-500 font-mono mb-4 bg-neutral-800 rounded-lg px-3 py-2">{zrData.trackingNumber}</div>
+            <p className="text-xs text-gray-500 mb-4">Request changes after the parcel is beyond "Confirmed au Bureau". Changes are reviewed by the hub.</p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-2">New Amount (DA) — leave empty to keep current</label>
+              <input type="number" value={modifyAmount} onChange={e => setModifyAmount(e.target.value)} placeholder={`Current: ${zrData.amount}`} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
+            </div>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-300 mb-2">New Phone — leave empty to keep current</label>
+              <input type="text" value={modifyPhone} onChange={e => setModifyPhone(e.target.value)} placeholder={`Current: ${zrData.customer.phone.number1}`} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setActionModal(null)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-neutral-700 transition-colors">Cancel</button>
+              <button onClick={async () => {
+                if (!zrCreds || !zrData || actionLoading) return;
+                setActionLoading(true);
+                try {
+                  await createParcelModificationRequest(zrCreds, {
+                    parcelId: zrData.id,
+                    ...(modifyAmount ? { amount: Number(modifyAmount) } : {}),
+                    ...(modifyPhone ? { phone: { number1: modifyPhone } } : {}),
+                  });
+                  const updated = await getParcelByTracking(zrCreds, zrData.trackingNumber);
+                  setZrData(updated);
+                  setActionModal(null);
+                  setError('Modification request submitted');
+                } catch (err: any) { setError('Modification failed: ' + (err?.message || 'unknown error')); }
+                setActionLoading(false);
+              }} disabled={actionLoading} className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-colors disabled:opacity-30">
+                {actionLoading ? 'Submitting...' : 'Submit Request'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

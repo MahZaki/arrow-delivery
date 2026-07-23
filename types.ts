@@ -579,6 +579,89 @@ export interface ZrBulkDeleteResponse {
 }
 
 // ============================================================================
+// ZR Parcel Actions (Refund, Exchange, Modification Request)
+// ============================================================================
+
+export interface ZrCreateRefundRequest {
+  customer: {
+    customerId: string;
+    name: string;
+    phone: { number1: string; number2?: string; number3?: string };
+  };
+  deliveryAddress?: {
+    street?: string;
+    cityTerritoryId: string;
+    districtTerritoryId: string;
+  };
+  hubId?: string;
+  deliveryType: 'home' | 'pickup-point' | 'return';
+  description: string;
+  amount: number;
+  externalId?: string;
+}
+
+export interface ZrCreateExchangeRequest {
+  customer: {
+    customerId: string;
+    name?: string;
+    phone?: { number1?: string; number2?: string; number3?: string };
+    deliveryAddress?: {
+      street?: string;
+      cityTerritoryId?: string;
+      districtTerritoryId?: string;
+    };
+  };
+  hubId?: string;
+  orderedProducts: Array<{
+    productId?: string;
+    productName?: string;
+    productSku?: string;
+    unitPrice: number;
+    quantity: number;
+    length: number;
+    width: number;
+    height: number;
+    weight?: number;
+    stockType?: string;
+  }>;
+  deliveryType?: string;
+  description?: string;
+  stateId?: string;
+  weight: { weight: number; dimensionalWeight?: number };
+  originalParcelId: string;
+  amount: number;
+  externalId?: string;
+  hubStockId?: string;
+}
+
+export interface ZrCreateExchangeResponse {
+  newParcelId: string;
+  returnParcelId?: string | null;
+  originalParcelId?: string | null;
+}
+
+export interface ZrCreateModificationRequest {
+  parcelId: string;
+  amount?: number;
+  phone?: {
+    number1?: string;
+    number2?: string;
+    number3?: string;
+  };
+  deliveryType?: 'home' | 'pickupPoint';
+  deliveryAddress?: {
+    street?: string;
+    city?: string;
+    cityTerritoryId?: string;
+    district?: string;
+    districtTerritoryId?: string;
+    postalCode?: string;
+    country?: string;
+  };
+  hubId?: string;
+}
+
+// ============================================================================
 // User & Reseller types
 // ============================================================================
 

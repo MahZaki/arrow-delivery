@@ -12,6 +12,9 @@ import {
   ZrUpdateAmountRequest, ZrUpdateCustomerRequest,
   ZrUpdateDeliveryAddressRequest,
   ZrBulkDeleteResponse,
+  ZrCreateRefundRequest,
+  ZrCreateExchangeRequest, ZrCreateExchangeResponse,
+  ZrCreateModificationRequest,
 } from '../types';
 
 const ZR_API_BASE = '/api/zr';
@@ -339,4 +342,29 @@ export async function deleteBulkParcels(
   parcelIds: string[]
 ): Promise<ZrBulkDeleteResponse> {
   return zrRequest<ZrBulkDeleteResponse>(creds, 'DELETE', '/parcels/bulk', { ParcelIds: parcelIds });
+}
+
+// ============================================================================
+// Phase 3b: Parcel Actions (Refund, Exchange, Modification Request)
+// ============================================================================
+
+export async function createParcelRefund(
+  creds: ZrCredentials,
+  data: ZrCreateRefundRequest
+): Promise<ZrCreateParcelResponse> {
+  return zrRequest<ZrCreateParcelResponse>(creds, 'POST', '/parcels/refund', data);
+}
+
+export async function createParcelExchange(
+  creds: ZrCredentials,
+  data: ZrCreateExchangeRequest
+): Promise<ZrCreateExchangeResponse> {
+  return zrRequest<ZrCreateExchangeResponse>(creds, 'POST', '/parcels/exchange', data);
+}
+
+export async function createParcelModificationRequest(
+  creds: ZrCredentials,
+  data: ZrCreateModificationRequest
+): Promise<ZrCreateParcelResponse> {
+  return zrRequest<ZrCreateParcelResponse>(creds, 'POST', '/parcel-modification-requests', data);
 }

@@ -4,14 +4,15 @@ import { ZrParcel, ZrCredentials } from '../types';
 import {
   searchParcels, clearZrCache, generateIndividualLabels,
   generateMultipleLabels, updateParcelAmount, updateParcelCustomer,
-  deleteBulkParcels, searchWorkflows, updateParcelState
+  deleteBulkParcels, createParcelRefund, createParcelExchange,
+  createParcelModificationRequest
 } from '../services/zrExpressApi';
-import { ZrWorkflowState } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import {
   RefreshCw, Search,
   Plus, ChevronDown, Calendar, Layers, List,
-  X, Printer, Edit3, Trash2, CheckSquare, Square
+  X, Printer, Edit3, Trash2, CheckSquare, Square,
+  RotateCcw, ArrowLeftRight, FileEdit
 } from 'lucide-react';
 
 interface ZrDashboardContentProps {
@@ -34,15 +35,22 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [labelLoading, setLabelLoading] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [actionModal, setActionModal] = useState<'refund' | 'exchange' | 'modify' | null>(null);
+  const [actionParcel, setActionParcel] = useState<ZrParcel | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundDescription, setRefundDescription] = useState('');
+  const [refundDeliveryType, setRefundDeliveryType] = useState<'home' | 'pickup-point'>('home');
+  const [exchangeAmount, setExchangeAmount] = useState('');
+  const [exchangeDescription, setExchangeDescription] = useState('');
+  const [modifyAmount, setModifyAmount] = useState('');
+  const [modifyPhone, setModifyPhone] = useState('');
   const [editParcel, setEditParcel] = useState<ZrParcel | null>(null);
   const [editAmount, setEditAmount] = useState('');
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [workflowStates, setWorkflowStates] = useState<ZrWorkflowState[]>([]);
-  const [stateDropdownId, setStateDropdownId] = useState<string | null>(null);
-  const [stateTransitionLoading, setStateTransitionLoading] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -90,29 +98,6 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
     } finally {
       setSyncing(false);
     }
-  };
-
-  useEffect(() => {
-    searchWorkflows(credentials, { pageNumber: 1, pageSize: 50 })
-      .then(res => {
-        const allStates = res.items.flatMap(w => w.states.filter(s => !s.isLocked));
-        setWorkflowStates(allStates);
-      })
-      .catch(() => {});
-  }, [credentials.tenantId, credentials.apiKey]);
-
-  const handleStateChange = async (parcelId: string, stateId: string) => {
-    setStateTransitionLoading(true);
-    setStateDropdownId(null);
-    setError(null);
-    try {
-      await updateParcelState(credentials, parcelId, { stateId });
-      clearZrCache();
-      await fetchParcels(currentPage);
-    } catch (err: any) {
-      setError('State change failed: ' + (err?.message || 'unknown error'));
-    }
-    setStateTransitionLoading(false);
   };
 
   const allSelected = useMemo(() =>
@@ -434,47 +419,13 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                         <div className="text-white font-medium">{parcel.customer.name}</div>
                         <div className="text-gray-500 text-xs mt-0.5">{parcel.customer.phone.number1}</div>
                       </td>
-                      <td className="p-4 relative">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setStateDropdownId(stateDropdownId === parcel.id ? null : parcel.id); }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm text-white transition-colors hover:opacity-90"
+                      <td className="p-4">
+                        <span
+                          className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm text-white"
                           style={{ backgroundColor: parcel.state.color ? `#${parcel.state.color}` : '#6b7280' }}
                         >
                           {parcel.state.name.replace(/_/g, ' ')}
-                          <ChevronDown size={12} />
-                        </button>
-
-                        {stateDropdownId === parcel.id && workflowStates.length > 0 && (
-                          <>
-                            <div className="fixed inset-0 z-40" onClick={() => setStateDropdownId(null)} />
-                            <div className="absolute left-0 top-full mt-1 w-56 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl z-50 max-h-64 overflow-y-auto">
-                              <div className="p-2 text-[10px] text-gray-500 uppercase tracking-wider px-3 pt-3 pb-1">Change State</div>
-                              {workflowStates.map(st => {
-                                const isCurrent = st.id === parcel.state.id;
-                                return (
-                                  <button
-                                    key={st.id}
-                                    disabled={isCurrent || stateTransitionLoading}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (isCurrent) return;
-                                      handleStateChange(parcel.id, st.id);
-                                    }}
-                                    className={`w-full text-left px-3 py-2 flex items-center gap-3 transition-colors ${
-                                      isCurrent
-                                        ? 'bg-amber-600/20 text-amber-300 cursor-not-allowed'
-                                        : 'text-gray-300 hover:bg-neutral-800'
-                                    }`}
-                                  >
-                                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: st.color ? `#${st.color}` : '#6b7280' }} />
-                                    <span className="text-sm font-medium">{st.name.replace(/_/g, ' ')}</span>
-                                    {isCurrent && <span className="text-[10px] ml-auto text-amber-500">(current)</span>}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </>
-                        )}
+                        </span>
                       </td>
                       <td className="p-4 text-gray-300">
                         {parcel.deliveryType === 'home' ? 'Home' : parcel.deliveryType === 'pickup-point' ? 'Pickup' : parcel.deliveryType}
@@ -531,6 +482,27 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                             ) : (
                               <><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Label</>
                             )}
+                          </button>
+                          <button
+                            onClick={() => { setActionParcel(parcel); setRefundAmount(String(parcel.amount)); setRefundDescription(''); setRefundDeliveryType(parcel.deliveryType === 'pickup-point' ? 'pickup-point' : 'home'); setActionModal('refund'); }}
+                            className="p-2 hover:bg-red-600/20 rounded-lg text-red-400 transition-colors"
+                            title="Refund"
+                          >
+                            <RotateCcw size={16} />
+                          </button>
+                          <button
+                            onClick={() => { setActionParcel(parcel); setExchangeAmount(String(parcel.amount)); setExchangeDescription(''); setActionModal('exchange'); }}
+                            className="p-2 hover:bg-blue-600/20 rounded-lg text-blue-400 transition-colors"
+                            title="Exchange"
+                          >
+                            <ArrowLeftRight size={16} />
+                          </button>
+                          <button
+                            onClick={() => { setActionParcel(parcel); setModifyAmount(''); setModifyPhone(''); setActionModal('modify'); }}
+                            className="p-2 hover:bg-emerald-600/20 rounded-lg text-emerald-400 transition-colors"
+                            title="Modify"
+                          >
+                            <FileEdit size={16} />
                           </button>
                         </div>
                       </td>
@@ -634,6 +606,155 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                     {bulkActionLoading ? '...' : 'Save'}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Refund Modal */}
+        {actionModal === 'refund' && actionParcel && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setActionModal(null)}>
+            <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2"><RotateCcw size={18} className="text-red-400" /> Create Refund</h3>
+                <button onClick={() => setActionModal(null)} className="text-gray-500 hover:text-white"><X size={20} /></button>
+              </div>
+              <div className="text-xs text-gray-500 font-mono mb-4 bg-neutral-800 rounded-lg px-3 py-2">{actionParcel.trackingNumber}</div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Amount (DA)</label>
+                <input type="number" value={refundAmount} onChange={e => setRefundAmount(e.target.value)} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Delivery Type</label>
+                <select value={refundDeliveryType} onChange={e => setRefundDeliveryType(e.target.value as any)} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm">
+                  <option value="home">Home</option>
+                  <option value="pickup-point">Pickup Point</option>
+                </select>
+              </div>
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
+                <input type="text" value={refundDescription} onChange={e => setRefundDescription(e.target.value)} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button onClick={() => setActionModal(null)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-neutral-700 transition-colors">Cancel</button>
+                <button onClick={async () => {
+                  if (!actionParcel || actionLoading) return;
+                  setActionLoading(true);
+                  setError(null);
+                  try {
+                    await createParcelRefund(credentials, {
+                      customer: { customerId: actionParcel.customer.customerId, name: actionParcel.customer.name, phone: { number1: actionParcel.customer.phone.number1 } },
+                      deliveryAddress: { cityTerritoryId: actionParcel.deliveryAddress.cityTerritoryId, districtTerritoryId: actionParcel.deliveryAddress.districtTerritoryId, street: actionParcel.deliveryAddress.street },
+                      hubId: actionParcel.deliveryAddress.hubId,
+                      deliveryType: refundDeliveryType,
+                      description: refundDescription || 'Refund',
+                      amount: Number(refundAmount),
+                    });
+                    setActionModal(null);
+                    clearZrCache();
+                    await fetchParcels(currentPage);
+                    setError('Refund created successfully');
+                  } catch (err: any) { setError('Refund failed: ' + (err?.message || 'unknown error')); }
+                  setActionLoading(false);
+                }} disabled={actionLoading} className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-500 transition-colors disabled:opacity-30">
+                  {actionLoading ? 'Creating...' : 'Create Refund'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Exchange Modal */}
+        {actionModal === 'exchange' && actionParcel && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setActionModal(null)}>
+            <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2"><ArrowLeftRight size={18} className="text-blue-400" /> Create Exchange</h3>
+                <button onClick={() => setActionModal(null)} className="text-gray-500 hover:text-white"><X size={20} /></button>
+              </div>
+              <div className="text-xs text-gray-500 font-mono mb-4 bg-neutral-800 rounded-lg px-3 py-2">{actionParcel.trackingNumber}</div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Amount (DA)</label>
+                <input type="number" value={exchangeAmount} onChange={e => setExchangeAmount(e.target.value)} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
+                <input type="text" value={exchangeDescription} onChange={e => setExchangeDescription(e.target.value)} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
+              </div>
+              <div className="mb-6 text-xs text-gray-500 bg-neutral-800 rounded-lg px-3 py-2">
+                Creates an exchange parcel linked to the original. Products and weight from the original parcel will be used.
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button onClick={() => setActionModal(null)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-neutral-700 transition-colors">Cancel</button>
+                <button onClick={async () => {
+                  if (!actionParcel || actionLoading) return;
+                  setActionLoading(true);
+                  setError(null);
+                  try {
+                    const products = (actionParcel.orderedProducts || []).length > 0
+                      ? actionParcel.orderedProducts.map(p => ({ productId: p.productId, productName: p.productName, unitPrice: p.unitPrice, quantity: p.quantity, length: p.dimensions?.length || 10, width: p.dimensions?.width || 10, height: p.dimensions?.height || 10, stockType: p.stockType || 'none' }))
+                      : [{ productName: 'Exchange', unitPrice: Number(exchangeAmount), quantity: 1, length: 10, width: 10, height: 10, stockType: 'none' }];
+                    await createParcelExchange(credentials, {
+                      customer: { customerId: actionParcel.customer.customerId, name: actionParcel.customer.name, phone: { number1: actionParcel.customer.phone.number1 } },
+                      orderedProducts: products,
+                      weight: { weight: actionParcel.weight?.weight || 0.5 },
+                      originalParcelId: actionParcel.id,
+                      amount: Number(exchangeAmount),
+                      description: exchangeDescription || 'Exchange',
+                    });
+                    setActionModal(null);
+                    clearZrCache();
+                    await fetchParcels(currentPage);
+                    setError('Exchange created successfully');
+                  } catch (err: any) { setError('Exchange failed: ' + (err?.message || 'unknown error')); }
+                  setActionLoading(false);
+                }} disabled={actionLoading} className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors disabled:opacity-30">
+                  {actionLoading ? 'Creating...' : 'Create Exchange'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modify Modal */}
+        {actionModal === 'modify' && actionParcel && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setActionModal(null)}>
+            <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2"><FileEdit size={18} className="text-emerald-400" /> Modification Request</h3>
+                <button onClick={() => setActionModal(null)} className="text-gray-500 hover:text-white"><X size={20} /></button>
+              </div>
+              <div className="text-xs text-gray-500 font-mono mb-4 bg-neutral-800 rounded-lg px-3 py-2">{actionParcel.trackingNumber}</div>
+              <p className="text-xs text-gray-500 mb-4">Request changes after the parcel is beyond "Confirmed au Bureau". Changes are reviewed by the hub.</p>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-2">New Amount (DA) — leave empty to keep current</label>
+                <input type="number" value={modifyAmount} onChange={e => setModifyAmount(e.target.value)} placeholder={`Current: ${actionParcel.amount}`} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
+              </div>
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-300 mb-2">New Phone — leave empty to keep current</label>
+                <input type="text" value={modifyPhone} onChange={e => setModifyPhone(e.target.value)} placeholder={`Current: ${actionParcel.customer.phone.number1}`} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button onClick={() => setActionModal(null)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-neutral-700 transition-colors">Cancel</button>
+                <button onClick={async () => {
+                  if (!actionParcel || actionLoading) return;
+                  setActionLoading(true);
+                  setError(null);
+                  try {
+                    await createParcelModificationRequest(credentials, {
+                      parcelId: actionParcel.id,
+                      ...(modifyAmount ? { amount: Number(modifyAmount) } : {}),
+                      ...(modifyPhone ? { phone: { number1: modifyPhone } } : {}),
+                    });
+                    setActionModal(null);
+                    clearZrCache();
+                    await fetchParcels(currentPage);
+                    setError('Modification request submitted');
+                  } catch (err: any) { setError('Modification failed: ' + (err?.message || 'unknown error')); }
+                  setActionLoading(false);
+                }} disabled={actionLoading} className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-colors disabled:opacity-30">
+                  {actionLoading ? 'Submitting...' : 'Submit Request'}
+                </button>
               </div>
             </div>
           </div>
