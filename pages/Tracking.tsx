@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Search, MapPin, Calendar, MessageSquare, AlertCircle, Package, Phone, Wallet, Banknote, Tag, Truck, Printer } from 'lucide-react';
+import { Search, MapPin, Calendar, MessageSquare, AlertCircle, Package, Phone, Wallet, Banknote, Tag, Truck, Printer, ChevronDown, RefreshCw } from 'lucide-react';
 import { trackOrder } from '../services/api';
-import { getParcelByTracking, getParcelStateHistory, generateIndividualLabels } from '../services/zrExpressApi';
-import { TrackingInfo, ZrParcel, ZrCredentials, ZrParcelStateHistoryEntry } from '../types';
+import { getParcelByTracking, getParcelStateHistory, generateIndividualLabels, searchWorkflows, updateParcelState } from '../services/zrExpressApi';
+import { TrackingInfo, ZrParcel, ZrCredentials, ZrParcelStateHistoryEntry, ZrWorkflowState } from '../types';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatusBadge from '../components/StatusBadge';
 import { STATUS_TRANSLATIONS, WILAYAS } from '../constants';
@@ -22,6 +22,9 @@ const Tracking: React.FC = () => {
   const [zrCreds, setZrCreds] = useState<ZrCredentials | null>(null);
   const [zrStateHistory, setZrStateHistory] = useState<ZrParcelStateHistoryEntry[]>([]);
   const [labelLoading, setLabelLoading] = useState(false);
+  const [workflowStates, setWorkflowStates] = useState<ZrWorkflowState[]>([]);
+  const [showStateDropdown, setShowStateDropdown] = useState(false);
+  const [stateTransitionLoading, setStateTransitionLoading] = useState(false);
 
   useEffect(() => {
     resolveZrCredentials().then(setZrCreds);
@@ -58,6 +61,12 @@ const Tracking: React.FC = () => {
         const parcel = await getParcelByTracking(zrCreds, number);
         setZrData(parcel);
         getParcelStateHistory(zrCreds, parcel.id).then(setZrStateHistory).catch(() => setZrStateHistory([]));
+        searchWorkflows(zrCreds, { pageNumber: 1, pageSize: 50 })
+          .then(res => {
+            const allStates = res.items.flatMap(w => w.states.filter(s => !s.isLocked));
+            setWorkflowStates(allStates);
+          })
+          .catch(() => {});
       } catch (err: any) {
         setError(err.message || 'Failed to fetch ZR Express tracking info.');
       } finally {
@@ -199,13 +208,65 @@ const Tracking: React.FC = () => {
                   {labelLoading ? 'Generating...' : 'Print Label'}
                 </button>
               </div>
-              <span
-                className="inline-block px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm text-white"
-                style={{ backgroundColor: zrData.state.color ? `#${zrData.state.color}` : '#6b7280' }}
-              >
-                {zrData.state.name.replace(/_/g, ' ')}
-                {zrData.situation && <span className="ml-2 opacity-75">· {zrData.situation.name}</span>}
-              </span>
+              <div className="relative">
+                <button
+                  onClick={() => setShowStateDropdown(!showStateDropdown)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm text-white transition-colors hover:opacity-90"
+                  style={{ backgroundColor: zrData.state.color ? `#${zrData.state.color}` : '#6b7280' }}
+                >
+                  {stateTransitionLoading ? (
+                    <><RefreshCw size={14} className="animate-spin" /> Updating...</>
+                  ) : (
+                    <>{zrData.state.name.replace(/_/g, ' ')}
+                      {zrData.situation && <span className="ml-1 opacity-75">· {zrData.situation.name}</span>}
+                      <ChevronDown size={14} /></>
+                  )}
+                </button>
+
+                {showStateDropdown && workflowStates.length > 0 && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowStateDropdown(false)} />
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl z-50 max-h-80 overflow-y-auto">
+                      <div className="p-2 text-[10px] text-gray-500 uppercase tracking-wider px-3 pt-3 pb-1">Change State</div>
+                      {workflowStates.map(st => {
+                        const isCurrent = st.id === zrData.state.id;
+                        return (
+                          <button
+                            key={st.id}
+                            disabled={isCurrent || stateTransitionLoading}
+                            onClick={async () => {
+                              if (isCurrent || !zrCreds) return;
+                              setStateTransitionLoading(true);
+                              setShowStateDropdown(false);
+                              try {
+                                await updateParcelState(zrCreds, zrData.id, { stateId: st.id });
+                                const updated = await getParcelByTracking(zrCreds, zrData.trackingNumber);
+                                setZrData(updated);
+                                getParcelStateHistory(zrCreds, updated.id).then(setZrStateHistory).catch(() => setZrStateHistory([]));
+                              } catch (err: any) {
+                                setError('State change failed: ' + (err?.message || 'unknown error'));
+                              }
+                              setStateTransitionLoading(false);
+                            }}
+                            className={`w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors ${
+                              isCurrent
+                                ? 'bg-amber-600/20 text-amber-300 cursor-not-allowed'
+                                : 'text-gray-300 hover:bg-neutral-800'
+                            }`}
+                          >
+                            <span
+                              className="w-3 h-3 rounded-full shrink-0"
+                              style={{ backgroundColor: st.color ? `#${st.color}` : '#6b7280' }}
+                            />
+                            <span className="text-sm font-medium">{st.name.replace(/_/g, ' ')}</span>
+                            {isCurrent && <span className="text-[10px] ml-auto text-amber-500">(current)</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

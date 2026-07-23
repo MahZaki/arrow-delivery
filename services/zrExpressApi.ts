@@ -8,6 +8,10 @@ import {
   ZrHubSearchRequest, ZrHubSearchResponse, ZrSupplierInfo,
   ZrLabelRequest, ZrLabelResponse,
   ZrParcelStateHistoryEntry,
+  ZrMultipleLabelResponse, ZrUpdateResponse,
+  ZrUpdateAmountRequest, ZrUpdateCustomerRequest,
+  ZrUpdateDeliveryAddressRequest,
+  ZrBulkDeleteResponse,
 } from '../types';
 
 const ZR_API_BASE = '/api/zr';
@@ -276,4 +280,63 @@ export async function getParcelStats(
 ): Promise<Array<{ stateId: string; stateName: string; count: number; color: string }>> {
   const workflowParam = workflowId ? `?workflowId=${workflowId}` : '';
   return zrRequest(creds, 'GET', `/parcels/stats${workflowParam}`);
+}
+
+// ============================================================================
+// Phase 3: Bulk Actions & Edit Operations
+// ============================================================================
+
+export async function generateMultipleLabels(
+  creds: ZrCredentials,
+  trackingNumbers: string[]
+): Promise<ZrMultipleLabelResponse> {
+  return zrRequest<ZrMultipleLabelResponse>(creds, 'POST', '/parcels/labels/multiple', { trackingNumbers });
+}
+
+export async function updateParcelAmount(
+  creds: ZrCredentials,
+  parcelId: string,
+  data: ZrUpdateAmountRequest
+): Promise<ZrUpdateResponse> {
+  return zrRequest<ZrUpdateResponse>(creds, 'PATCH', `/parcels/${encodeURIComponent(parcelId)}/amount`, data);
+}
+
+export async function updateParcelCustomer(
+  creds: ZrCredentials,
+  parcelId: string,
+  data: ZrUpdateCustomerRequest
+): Promise<ZrUpdateResponse> {
+  return zrRequest<ZrUpdateResponse>(creds, 'PATCH', `/parcels/${encodeURIComponent(parcelId)}/customer`, data);
+}
+
+export async function updateParcelDeliveryAddress(
+  creds: ZrCredentials,
+  parcelId: string,
+  data: ZrUpdateDeliveryAddressRequest
+): Promise<ZrUpdateResponse> {
+  return zrRequest<ZrUpdateResponse>(creds, 'PATCH', `/parcels/${encodeURIComponent(parcelId)}/deliveryAddress`, data);
+}
+
+export async function deleteParcel(
+  creds: ZrCredentials,
+  parcelId: string
+): Promise<ZrUpdateResponse | void> {
+  const url = `${ZR_API_BASE}/parcels/${encodeURIComponent(parcelId)}`;
+  const response = await fetchWithRetry(url, {
+    method: 'DELETE',
+    headers: headers(creds),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '');
+    throw new Error(`ZR API error ${response.status} (${response.statusText}): ${errorBody || '(no body)'}`);
+  }
+  if (response.status === 204) return;
+  return response.json();
+}
+
+export async function deleteBulkParcels(
+  creds: ZrCredentials,
+  parcelIds: string[]
+): Promise<ZrBulkDeleteResponse> {
+  return zrRequest<ZrBulkDeleteResponse>(creds, 'DELETE', '/parcels/bulk', { ParcelIds: parcelIds });
 }

@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ResellerParcel, ZrCredentials } from '../types';
 import { getMyParcels } from '../services/resellerApi';
-import { generateIndividualLabels } from '../services/zrExpressApi';
+import { generateIndividualLabels, generateMultipleLabels } from '../services/zrExpressApi';
 import LoadingSpinner from './LoadingSpinner';
 import {
-  Package, Truck, RefreshCw, Search,
-  MapPin, Plus, Layers, Calendar
+  RefreshCw, Search,
+  Plus, Layers,
+  Printer, CheckSquare, Square, X
 } from 'lucide-react';
 
 interface ZrSubAccountContentProps {
@@ -20,6 +21,8 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [labelLoading, setLabelLoading] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
   const fetchParcels = async () => {
     setLoading(true);
@@ -37,6 +40,47 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
   useEffect(() => {
     fetchParcels();
   }, [profileId]);
+
+  const currentParcels = parcels;
+  const allSelected = useMemo(() =>
+    currentParcels.length > 0 && currentParcels.every(p => selectedIds.has(p.id)),
+  [currentParcels, selectedIds]);
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(currentParcels.map(p => p.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const handleBulkPrintLabels = async () => {
+    if (!zrCredentials) return;
+    const selected = currentParcels.filter(p => selectedIds.has(p.id));
+    if (selected.length === 0) return;
+    setBulkActionLoading(true);
+    setError(null);
+    try {
+      const result = await generateMultipleLabels(zrCredentials, selected.map(p => p.tracking_number));
+      if (result.fileUrl) {
+        window.open(result.fileUrl, '_blank');
+      }
+      if (result.failedTrackingNumbers.length > 0) {
+        setError(`${result.failedTrackingNumbers.length} label(s) failed: ${result.failedTrackingNumbers.join(', ')}`);
+      }
+    } catch (err: any) {
+      setError('Bulk label print failed: ' + (err?.message || 'unknown error'));
+    }
+    setBulkActionLoading(false);
+  };
 
   if (loading) {
     return <div className="min-h-[400px] flex items-center justify-center"><LoadingSpinner text="Loading your parcels..." /></div>;
@@ -77,11 +121,44 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
           <div className="bg-red-900/20 border border-red-500/50 text-red-200 p-4 rounded-xl mb-6">{error}</div>
         )}
 
+        {/* Bulk Action Bar */}
+        {zrCredentials && selectedIds.size > 0 && (
+          <div className="flex items-center justify-between bg-amber-900/20 border border-amber-600/30 rounded-xl px-4 py-3 mb-4">
+            <div className="flex items-center gap-3">
+              <CheckSquare size={18} className="text-amber-400" />
+              <span className="text-sm text-amber-200 font-medium">{selectedIds.size} selected</span>
+              <button
+                onClick={clearSelection}
+                className="text-xs text-gray-500 hover:text-white transition-colors flex items-center gap-1"
+              >
+                <X size={14} /> Clear
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleBulkPrintLabels}
+                disabled={bulkActionLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-black rounded-lg text-xs font-bold transition-colors disabled:opacity-30"
+              >
+                <Printer size={14} />
+                {bulkActionLoading ? 'Processing...' : 'Print Labels'}
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="bg-arrow-dark border border-neutral-800 rounded-2xl overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-neutral-950 text-gray-400 text-xs uppercase tracking-wider border-b border-neutral-800">
+                  {zrCredentials && (
+                    <th className="p-4 w-10">
+                      <button onClick={toggleSelectAll} className="text-gray-500 hover:text-amber-400 transition-colors">
+                        {allSelected ? <CheckSquare size={16} className="text-amber-400" /> : <Square size={16} />}
+                      </button>
+                    </th>
+                  )}
                   <th className="p-4 font-semibold">Tracking</th>
                   <th className="p-4 font-semibold">State</th>
                   <th className="p-4 font-semibold">COD Amount</th>
@@ -94,6 +171,13 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
                 {parcels.length > 0 ? (
                   parcels.map((parcel) => (
                     <tr key={parcel.id} className="hover:bg-neutral-900/50 transition-colors group">
+                      {zrCredentials && (
+                        <td className="p-4">
+                          <button onClick={(e) => { e.stopPropagation(); toggleSelect(parcel.id); }} className="text-gray-500 hover:text-amber-400 transition-colors">
+                            {selectedIds.has(parcel.id) ? <CheckSquare size={16} className="text-amber-400" /> : <Square size={16} />}
+                          </button>
+                        </td>
+                      )}
                       <td className="p-4">
                         <div className="font-bold text-white font-mono">{parcel.tracking_number}</div>
                       </td>
@@ -155,7 +239,7 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="p-12 text-center text-gray-500">
+                    <td colSpan={zrCredentials ? 7 : 6} className="p-12 text-center text-gray-500">
                       No parcels yet. Create your first one!
                     </td>
                   </tr>

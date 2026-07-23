@@ -1,11 +1,17 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ZrParcel, ZrCredentials } from '../types';
-import { searchParcels, clearZrCache, generateIndividualLabels } from '../services/zrExpressApi';
+import {
+  searchParcels, clearZrCache, generateIndividualLabels,
+  generateMultipleLabels, updateParcelAmount, updateParcelCustomer,
+  deleteBulkParcels, searchWorkflows, updateParcelState
+} from '../services/zrExpressApi';
+import { ZrWorkflowState } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import {
-  Package, Truck, CheckCircle, RefreshCw, Search,
-  MapPin, Plus, ChevronDown, Calendar, Layers, List
+  RefreshCw, Search,
+  Plus, ChevronDown, Calendar, Layers, List,
+  X, Printer, Edit3, Trash2, CheckSquare, Square
 } from 'lucide-react';
 
 interface ZrDashboardContentProps {
@@ -27,6 +33,16 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
   const [totalCount, setTotalCount] = useState(0);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [labelLoading, setLabelLoading] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [editParcel, setEditParcel] = useState<ZrParcel | null>(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [workflowStates, setWorkflowStates] = useState<ZrWorkflowState[]>([]);
+  const [stateDropdownId, setStateDropdownId] = useState<string | null>(null);
+  const [stateTransitionLoading, setStateTransitionLoading] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -74,6 +90,142 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
     } finally {
       setSyncing(false);
     }
+  };
+
+  useEffect(() => {
+    searchWorkflows(credentials, { pageNumber: 1, pageSize: 50 })
+      .then(res => {
+        const allStates = res.items.flatMap(w => w.states.filter(s => !s.isLocked));
+        setWorkflowStates(allStates);
+      })
+      .catch(() => {});
+  }, [credentials.tenantId, credentials.apiKey]);
+
+  const handleStateChange = async (parcelId: string, stateId: string) => {
+    setStateTransitionLoading(true);
+    setStateDropdownId(null);
+    setError(null);
+    try {
+      await updateParcelState(credentials, parcelId, { stateId });
+      clearZrCache();
+      await fetchParcels(currentPage);
+    } catch (err: any) {
+      setError('State change failed: ' + (err?.message || 'unknown error'));
+    }
+    setStateTransitionLoading(false);
+  };
+
+  const allSelected = useMemo(() =>
+    currentParcels.length > 0 && currentParcels.every(p => selectedIds.has(p.id)),
+  [currentParcels, selectedIds]);
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(currentParcels.map(p => p.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const handleBulkPrintLabels = async () => {
+    const selected = currentParcels.filter(p => selectedIds.has(p.id));
+    if (selected.length === 0) return;
+    setBulkActionLoading(true);
+    setError(null);
+    try {
+      const result = await generateMultipleLabels(credentials, selected.map(p => p.trackingNumber));
+      if (result.fileUrl) {
+        window.open(result.fileUrl, '_blank');
+      }
+      if (result.failedTrackingNumbers.length > 0) {
+        setError(`${result.failedTrackingNumbers.length} label(s) failed: ${result.failedTrackingNumbers.join(', ')}`);
+      }
+    } catch (err: any) {
+      setError('Bulk label print failed: ' + (err?.message || 'unknown error'));
+    }
+    setBulkActionLoading(false);
+  };
+
+  const handleBulkDelete = async () => {
+    const selected = currentParcels.filter(p => selectedIds.has(p.id));
+    if (selected.length === 0) return;
+    setBulkActionLoading(true);
+    setError(null);
+    try {
+      const result = await deleteBulkParcels(credentials, selected.map(p => p.id));
+      if (result.successCount > 0) {
+        clearSelection();
+        clearZrCache();
+        await fetchParcels(currentPage);
+      }
+      if (result.failureCount > 0) {
+        const msgs = result.failures.map(f => f.errorMessage).join('; ');
+        setError(`Deleted ${result.successCount}, ${result.failureCount} failed: ${msgs}`);
+      }
+    } catch (err: any) {
+      setError('Bulk delete failed: ' + (err?.message || 'unknown error'));
+    }
+    setBulkActionLoading(false);
+    setShowDeleteConfirm(false);
+  };
+
+  const openEditModal = (parcel: ZrParcel) => {
+    setEditParcel(parcel);
+    setEditAmount(String(parcel.amount));
+    setEditName(parcel.customer.name);
+    setEditPhone(parcel.customer.phone.number1);
+  };
+
+  const closeEditModal = () => {
+    setEditParcel(null);
+    setEditAmount('');
+    setEditName('');
+    setEditPhone('');
+  };
+
+  const handleSaveAmount = async () => {
+    if (!editParcel) return;
+    setBulkActionLoading(true);
+    setError(null);
+    try {
+      await updateParcelAmount(credentials, editParcel.id, {
+        parcelId: editParcel.id,
+        amount: Number(editAmount),
+      });
+      closeEditModal();
+      clearZrCache();
+      await fetchParcels(currentPage);
+    } catch (err: any) {
+      setError('Update amount failed: ' + (err?.message || 'unknown error'));
+    }
+    setBulkActionLoading(false);
+  };
+
+  const handleSaveCustomer = async () => {
+    if (!editParcel) return;
+    setBulkActionLoading(true);
+    setError(null);
+    try {
+      await updateParcelCustomer(credentials, editParcel.id, {
+        parcelId: editParcel.id,
+        name: editName,
+        phone: editPhone,
+      });
+      closeEditModal();
+      clearZrCache();
+      await fetchParcels(currentPage);
+    } catch (err: any) {
+      setError('Update customer failed: ' + (err?.message || 'unknown error'));
+    }
+    setBulkActionLoading(false);
   };
 
   const filteredParcels = useMemo(() => {
@@ -186,12 +338,76 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
           </div>
         )}
 
+        {/* Bulk Action Bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center justify-between bg-amber-900/20 border border-amber-600/30 rounded-xl px-4 py-3 mb-4">
+            <div className="flex items-center gap-3">
+              <CheckSquare size={18} className="text-amber-400" />
+              <span className="text-sm text-amber-200 font-medium">{selectedIds.size} selected</span>
+              <button
+                onClick={clearSelection}
+                className="text-xs text-gray-500 hover:text-white transition-colors flex items-center gap-1"
+              >
+                <X size={14} /> Clear
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleBulkPrintLabels}
+                disabled={bulkActionLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-black rounded-lg text-xs font-bold transition-colors disabled:opacity-30"
+              >
+                <Printer size={14} />
+                {bulkActionLoading ? 'Processing...' : 'Print Labels'}
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={bulkActionLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/40 text-red-400 rounded-lg text-xs font-bold transition-colors disabled:opacity-30"
+              >
+                <Trash2 size={14} />
+                Delete
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Delete Confirmation */}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowDeleteConfirm(false)}>
+            <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-sm mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+              <h3 className="text-lg font-bold text-white mb-2">Delete {selectedIds.size} parcel(s)?</h3>
+              <p className="text-sm text-gray-400 mb-6">This action cannot be undone. Exchange/return parcels cannot be deleted.</p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-neutral-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={bulkActionLoading}
+                  className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-500 transition-colors disabled:opacity-30"
+                >
+                  {bulkActionLoading ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Parcels Table */}
         <div className="bg-arrow-dark border border-neutral-800 rounded-2xl overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-neutral-950 text-gray-400 text-xs uppercase tracking-wider border-b border-neutral-800">
+                  <th className="p-4 w-10">
+                    <button onClick={toggleSelectAll} className="text-gray-500 hover:text-amber-400 transition-colors">
+                      {allSelected ? <CheckSquare size={16} className="text-amber-400" /> : <Square size={16} />}
+                    </button>
+                  </th>
                   <th className="p-4 font-semibold">Tracking</th>
                   <th className="p-4 font-semibold">Customer</th>
                   <th className="p-4 font-semibold">State</th>
@@ -207,19 +423,58 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                   currentParcels.map((parcel) => (
                     <tr key={parcel.id} className="hover:bg-neutral-900/50 transition-colors group">
                       <td className="p-4">
+                        <button onClick={(e) => { e.stopPropagation(); toggleSelect(parcel.id); }} className="text-gray-500 hover:text-amber-400 transition-colors">
+                          {selectedIds.has(parcel.id) ? <CheckSquare size={16} className="text-amber-400" /> : <Square size={16} />}
+                        </button>
+                      </td>
+                      <td className="p-4">
                         <div className="font-bold text-white font-mono">{parcel.trackingNumber}</div>
                       </td>
                       <td className="p-4">
                         <div className="text-white font-medium">{parcel.customer.name}</div>
                         <div className="text-gray-500 text-xs mt-0.5">{parcel.customer.phone.number1}</div>
                       </td>
-                      <td className="p-4">
-                        <span
-                          className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm text-white"
+                      <td className="p-4 relative">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setStateDropdownId(stateDropdownId === parcel.id ? null : parcel.id); }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm text-white transition-colors hover:opacity-90"
                           style={{ backgroundColor: parcel.state.color ? `#${parcel.state.color}` : '#6b7280' }}
                         >
                           {parcel.state.name.replace(/_/g, ' ')}
-                        </span>
+                          <ChevronDown size={12} />
+                        </button>
+
+                        {stateDropdownId === parcel.id && workflowStates.length > 0 && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setStateDropdownId(null)} />
+                            <div className="absolute left-0 top-full mt-1 w-56 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl z-50 max-h-64 overflow-y-auto">
+                              <div className="p-2 text-[10px] text-gray-500 uppercase tracking-wider px-3 pt-3 pb-1">Change State</div>
+                              {workflowStates.map(st => {
+                                const isCurrent = st.id === parcel.state.id;
+                                return (
+                                  <button
+                                    key={st.id}
+                                    disabled={isCurrent || stateTransitionLoading}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (isCurrent) return;
+                                      handleStateChange(parcel.id, st.id);
+                                    }}
+                                    className={`w-full text-left px-3 py-2 flex items-center gap-3 transition-colors ${
+                                      isCurrent
+                                        ? 'bg-amber-600/20 text-amber-300 cursor-not-allowed'
+                                        : 'text-gray-300 hover:bg-neutral-800'
+                                    }`}
+                                  >
+                                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: st.color ? `#${st.color}` : '#6b7280' }} />
+                                    <span className="text-sm font-medium">{st.name.replace(/_/g, ' ')}</span>
+                                    {isCurrent && <span className="text-[10px] ml-auto text-amber-500">(current)</span>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
                       </td>
                       <td className="p-4 text-gray-300">
                         {parcel.deliveryType === 'home' ? 'Home' : parcel.deliveryType === 'pickup-point' ? 'Pickup' : parcel.deliveryType}
@@ -236,6 +491,13 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                       </td>
                       <td className="p-4 text-center">
                         <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => openEditModal(parcel)}
+                            className="p-2 hover:bg-blue-600/20 rounded-lg text-blue-400 transition-colors"
+                            title="Edit Parcel"
+                          >
+                            <Edit3 size={16} />
+                          </button>
                           <button
                             onClick={() => navigate(`/track?tracking=${parcel.trackingNumber}&carrier=zrexpress`)}
                             className="p-2 hover:bg-amber-600/20 rounded-lg text-amber-400 transition-colors"
@@ -276,7 +538,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={8} className="p-12 text-center text-gray-500">
+                    <td colSpan={9} className="p-12 text-center text-gray-500">
                       {loading ? 'Loading...' : 'No parcels found.'}
                     </td>
                   </tr>
@@ -306,6 +568,76 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
             </div>
           )}
         </div>
+
+        {/* Edit Modal */}
+        {editParcel && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={closeEditModal}>
+            <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Edit3 size={18} className="text-amber-400" />
+                  Edit Parcel
+                </h3>
+                <button onClick={closeEditModal} className="text-gray-500 hover:text-white transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="text-xs text-gray-500 font-mono mb-4 bg-neutral-800 rounded-lg px-3 py-2">
+                {editParcel.trackingNumber}
+              </div>
+
+              {/* Amount Section */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Total Amount (DA)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={editAmount}
+                    onChange={e => setEditAmount(e.target.value)}
+                    min="0"
+                    max="150000"
+                    className="flex-1 bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm"
+                  />
+                  <button
+                    onClick={handleSaveAmount}
+                    disabled={bulkActionLoading}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-black rounded-lg text-sm font-bold transition-colors disabled:opacity-30"
+                  >
+                    {bulkActionLoading ? '...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Customer Section */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Customer Name</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm mb-3"
+                />
+                <label className="block text-sm font-medium text-gray-300 mb-2">Customer Phone</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={editPhone}
+                    onChange={e => setEditPhone(e.target.value)}
+                    className="flex-1 bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm"
+                  />
+                  <button
+                    onClick={handleSaveCustomer}
+                    disabled={bulkActionLoading}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-black rounded-lg text-sm font-bold transition-colors disabled:opacity-30"
+                  >
+                    {bulkActionLoading ? '...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

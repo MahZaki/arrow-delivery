@@ -521,6 +521,64 @@ export interface ZrSupplierInfo {
 }
 
 // ============================================================================
+// ZR Bulk Actions & Edit Types
+// ============================================================================
+
+export interface ZrUpdateResponse {
+  id: string;
+}
+
+export interface ZrUpdateAmountRequest {
+  parcelId: string;
+  amount: number;
+}
+
+export interface ZrUpdateCustomerRequest {
+  parcelId: string;
+  name?: string;
+  phone?: string;
+}
+
+export interface ZrUpdateDeliveryAddressRequest {
+  parcelId: string;
+  deliveryAddress: {
+    cityTerritoryId: string;
+    districtTerritoryId: string;
+    street?: string;
+  };
+  hubId?: string;
+}
+
+export interface ZrMultipleLabelResponse {
+  fileUrl: string | null;
+  failedTrackingNumbers: string[];
+}
+
+export interface ZrBulkDeleteRequest {
+  ParcelIds: string[];
+}
+
+export interface ZrBulkDeleteSuccessItem {
+  index: number;
+  parcelId: string;
+  trackingNumber: string;
+}
+
+export interface ZrBulkDeleteFailureItem {
+  index: number;
+  errorCode: string;
+  errorMessage: string;
+}
+
+export interface ZrBulkDeleteResponse {
+  totalRequested: number;
+  successCount: number;
+  failureCount: number;
+  successes: ZrBulkDeleteSuccessItem[];
+  failures: ZrBulkDeleteFailureItem[];
+}
+
+// ============================================================================
 // User & Reseller types
 // ============================================================================
 
