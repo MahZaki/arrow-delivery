@@ -78,11 +78,9 @@ const ZrCreateOrder: React.FC = () => {
     setLoadingRate(true);
     getDeliveryRate(credentials, selectedCommune)
       .then(rate => {
-        const price = rate.deliveryPrice ?? rate.homeDeliveryPrice ?? rate.pickupPointPrice;
-        if (price != null) {
-          setDeliveryRate(price);
-          setMyDeliveryPrice(calcMyPrice(price));
-        }
+        const price = rate.deliveryPrice ?? rate.homeDeliveryPrice ?? rate.pickupPointPrice ?? 0;
+        setDeliveryRate(price);
+        setMyDeliveryPrice(calcMyPrice(price));
       })
       .catch(() => {
         setDeliveryRate(null);
@@ -355,7 +353,7 @@ const ZrCreateOrder: React.FC = () => {
               <h3 className="text-sm font-bold text-amber-400 mb-2">Delivery Pricing</h3>
               <div className="flex gap-6 text-sm">
                 <span className="text-gray-400">Base: <strong className="text-white">{deliveryRate.toLocaleString()} DA</strong></span>
-                {myDeliveryPrice !== null && myDeliveryPrice !== deliveryRate && (
+                {myDeliveryPrice != null && myDeliveryPrice !== deliveryRate && (
                   <span className="text-gray-400">Your price: <strong className="text-amber-300">{myDeliveryPrice.toLocaleString()} DA</strong></span>
                 )}
               </div>
