@@ -225,10 +225,10 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                         <div className="text-gray-600 text-xs">{parcel.deliveryAddress.city}</div>
                       </td>
                       <td className="p-4 font-mono font-medium text-amber-400">
-                        {parcel.amount.toLocaleString()} DA
+                        {(parcel.amount ?? 0).toLocaleString()} DA
                       </td>
                       <td className="p-4 font-mono text-gray-400">
-                        {parcel.deliveryPrice.toLocaleString()} DA
+                        {(parcel.deliveryPrice ?? 0).toLocaleString()} DA
                       </td>
                       <td className="p-4 text-right text-gray-500">
                         {new Date(parcel.createdAt).toLocaleDateString()}

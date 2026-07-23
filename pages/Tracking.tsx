@@ -220,19 +220,19 @@ const Tracking: React.FC = () => {
                 <div className="flex flex-col">
                   <span className="text-gray-400 text-xs uppercase mb-1">Total Amount (COD)</span>
                   <span className="text-2xl font-bold text-white tracking-tight">
-                    {zrData.amount.toLocaleString()} <span className="text-sm font-normal text-gray-500">DA</span>
+                    {(zrData.amount ?? 0).toLocaleString()} <span className="text-sm font-normal text-gray-500">DA</span>
                   </span>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-gray-400 text-xs uppercase mb-1">Delivery Fee</span>
                   <span className="text-xl font-bold text-red-400 tracking-tight">
-                    -{zrData.deliveryPrice.toLocaleString()} <span className="text-sm font-normal text-red-400/70">DA</span>
+                    -{(zrData.deliveryPrice ?? 0).toLocaleString()} <span className="text-sm font-normal text-red-400/70">DA</span>
                   </span>
                 </div>
                 <div className="flex flex-col pt-4 sm:pt-0 sm:border-l sm:border-neutral-800 sm:pl-6">
                   <span className="text-gray-400 text-xs uppercase mb-1 font-bold text-emerald-500">Net</span>
                   <span className="text-3xl font-extrabold text-emerald-400 tracking-tight">
-                    {(zrData.amount - (zrData.deliveryPrice + (zrData.ReturnPrice || 0))).toLocaleString()} <span className="text-lg font-normal text-emerald-600">DA</span>
+                    {((zrData.amount ?? 0) - ((zrData.deliveryPrice ?? 0) + (zrData.ReturnPrice || 0))).toLocaleString()} <span className="text-lg font-normal text-emerald-600">DA</span>
                   </span>
                 </div>
               </div>

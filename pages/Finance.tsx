@@ -398,7 +398,7 @@ const Finance: React.FC = () => {
                         <td className={`px-5 py-3.5 font-mono font-bold ${
                           tx.amount >= 0 ? 'text-green-400' : 'text-red-400'
                         }`}>
-                          {tx.amount >= 0 ? '+' : ''}{tx.amount.toLocaleString()} DA
+                          {(tx.amount ?? 0) >= 0 ? '+' : ''}{(tx.amount ?? 0).toLocaleString()} DA
                         </td>
                         <td className="px-5 py-3.5 text-gray-400 text-xs">{tx.description || '—'}</td>
                         <td className="px-5 py-3.5 text-gray-500 text-xs">{new Date(tx.created_at).toLocaleDateString()}</td>
@@ -665,7 +665,7 @@ const Finance: React.FC = () => {
                               <span className="font-semibold text-gray-200">
                                 {index + 1}. {w.name}
                               </span>
-                              <span className="text-white font-bold">{w.revenue.toLocaleString()} DA</span>
+                              <span className="text-white font-bold">{(w.revenue ?? 0).toLocaleString()} DA</span>
                             </div>
                             <div className="relative w-full h-2 bg-gray-950 rounded-full overflow-hidden">
                               <div
@@ -675,7 +675,7 @@ const Finance: React.FC = () => {
                             </div>
                             <div className="flex justify-between text-[10px] text-gray-500">
                               <span>{w.count} delivered orders</span>
-                              <span>Avg: {Math.round(w.revenue / w.count).toLocaleString()} DA / order</span>
+                              <span>Avg: {Math.round((w.revenue ?? 0) / (w.count || 1)).toLocaleString()} DA / order</span>
                             </div>
                           </div>
                         );

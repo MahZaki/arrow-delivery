@@ -100,10 +100,10 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId }) 
                         </span>
                       </td>
                       <td className="p-4 font-mono font-medium text-amber-400">
-                        {parcel.cod_amount.toLocaleString()} DA
+                        {(parcel.cod_amount ?? 0).toLocaleString()} DA
                       </td>
                       <td className="p-4 font-mono text-gray-400">
-                        {parcel.my_delivery_price.toLocaleString()} DA
+                        {(parcel.my_delivery_price ?? 0).toLocaleString()} DA
                       </td>
                       <td className="p-4 text-right text-gray-500">
                         {new Date(parcel.created_at).toLocaleDateString()}
