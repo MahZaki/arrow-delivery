@@ -44,7 +44,7 @@ const ZrCreateOrder: React.FC = () => {
   const [hubs, setHubs] = useState<import('../types').ZrHub[]>([]);
   const [selectedHub, setSelectedHub] = useState('');
   const [lastTracking, setLastTracking] = useState<string | null>(null);
-  const [lastParcelId, setLastParcelId] = useState<string | null>(null);
+  const [labelLoading, setLabelLoading] = useState(false);
 
   const calcMyPrice = (zrPrice: number): number => {
     if (!user?.master_id || !user?.markup_type) return zrPrice;
@@ -207,8 +207,8 @@ const ZrCreateOrder: React.FC = () => {
         })
         .catch(() => {});
       setLastTracking(parcelDetails.trackingNumber);
-      setLastParcelId(result.id);
       setSuccess(`Parcel created successfully! Tracking: ${parcelDetails.trackingNumber}`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
       setError(err.message || 'Failed to create parcel');
     } finally {
@@ -252,14 +252,22 @@ const ZrCreateOrder: React.FC = () => {
               </button>
               <button onClick={async () => {
                 if (!credentials || !lastTracking) return;
+                setLabelLoading(true);
                 try {
                   const result = await generateIndividualLabels(credentials, { trackingNumbers: [lastTracking] });
                   if (result.parcelLabelFiles.length > 0) {
                     window.open(result.parcelLabelFiles[0].fileUrl, '_blank');
+                  } else {
+                    setError('Label generation failed: tracking not found');
                   }
-                } catch {}
-              }} className="text-sm bg-amber-600 hover:bg-amber-500 text-black px-4 py-2 rounded-lg font-medium transition-colors">
-                Print Label
+                } catch (err: any) {
+                  setError('Label generation failed: ' + (err.message || 'unknown error'));
+                } finally {
+                  setLabelLoading(false);
+                }
+              }} disabled={labelLoading}
+                className="text-sm bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-black px-4 py-2 rounded-lg font-medium transition-colors">
+                {labelLoading ? 'Generating...' : 'Print Label'}
               </button>
             </div>
           </div>
