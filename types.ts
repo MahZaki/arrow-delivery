@@ -317,11 +317,16 @@ export interface ZrCreateParcelResponse {
   id: string;
 }
 
+export interface ZrDeliveryPriceItem {
+  deliveryType: 'home' | 'pickup-point' | 'return';
+  price: number;
+}
+
 export interface ZrDeliveryRate {
-  deliveryPrice?: number;
-  returnPrice?: number;
-  homeDeliveryPrice?: number;
-  pickupPointPrice?: number;
+  toTerritoryId: string;
+  toTerritoryName: string;
+  toTerritoryLevel?: string;
+  deliveryPrices: ZrDeliveryPriceItem[];
 }
 
 export interface ZrTerritory {

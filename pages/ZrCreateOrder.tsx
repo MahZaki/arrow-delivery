@@ -78,7 +78,9 @@ const ZrCreateOrder: React.FC = () => {
     setLoadingRate(true);
     getDeliveryRate(credentials, selectedCommune)
       .then(rate => {
-        const price = rate.deliveryPrice ?? rate.homeDeliveryPrice ?? rate.pickupPointPrice ?? 0;
+        const price = rate.deliveryPrices?.find(p => p.deliveryType === deliveryType)?.price
+          ?? rate.deliveryPrices?.find(p => p.deliveryType === 'home')?.price
+          ?? 0;
         setDeliveryRate(price);
         setMyDeliveryPrice(calcMyPrice(price));
       })
@@ -136,7 +138,7 @@ const ZrCreateOrder: React.FC = () => {
           ...(street ? { street } : {}),
         },
         orderedProducts: products
-          .filter(p => p.name && p.price)
+          .filter(p => p.name)
           .map(p => ({
             productName: p.name,
             unitPrice: parseFloat(p.price) || 0,
