@@ -5,14 +5,16 @@ import {
   searchParcels, clearZrCache, generateIndividualLabels,
   generateMultipleLabels, updateParcelAmount, updateParcelCustomer,
   deleteBulkParcels, createParcelRefund, createParcelExchange,
-  createParcelModificationRequest
+  createParcelModificationRequest, createParcel, getAllWilayas,
+  getCommunesByWilaya
 } from '../services/zrExpressApi';
 import LoadingSpinner from './LoadingSpinner';
 import {
   RefreshCw, Search,
   Plus, ChevronDown, Calendar, Layers, List,
   X, Printer, Edit3, Trash2, CheckSquare, Square,
-  RotateCcw, ArrowLeftRight, FileEdit
+  RotateCcw, ArrowLeftRight, FileEdit, Upload, FileText,
+  CheckCircle, AlertTriangle
 } from 'lucide-react';
 
 interface ZrDashboardContentProps {
@@ -45,6 +47,12 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
   const [exchangeDescription, setExchangeDescription] = useState('');
   const [modifyAmount, setModifyAmount] = useState('');
   const [modifyPhone, setModifyPhone] = useState('');
+  const [showBulkImport, setShowBulkImport] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<any[]>([]);
+  const [importColumns, setImportColumns] = useState<Record<string, number>>({});
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number; results: { tracking: string; status: string; error?: string }[] } | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
   const [editParcel, setEditParcel] = useState<ZrParcel | null>(null);
   const [editAmount, setEditAmount] = useState('');
   const [editName, setEditName] = useState('');
@@ -283,7 +291,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                   >
                     <Plus size={16} className="text-amber-400" /> Single Order
                   </button>
-                  <button className="w-full text-left px-4 py-3 hover:bg-amber-600/20 text-white flex items-center gap-2">
+                  <button onClick={() => { setShowAddMenu(false); setShowBulkImport(true); }} className="w-full text-left px-4 py-3 hover:bg-amber-600/20 text-white flex items-center gap-2">
                     <List size={16} className="text-blue-400" /> Bulk Import
                   </button>
                 </div>
@@ -611,6 +619,15 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
           </div>
         )}
 
+        {/* Bulk Import Modal */}
+        {showBulkImport && (
+          <BulkImportModal
+            credentials={credentials}
+            onClose={() => { setShowBulkImport(false); setImportFile(null); setImportPreview([]); setImportColumns({}); setImportProgress(null); }}
+            onComplete={() => { clearZrCache(); fetchParcels(currentPage); }}
+          />
+        )}
+
         {/* Refund Modal */}
         {actionModal === 'refund' && actionParcel && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setActionModal(null)}>
@@ -756,6 +773,288 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                   {actionLoading ? 'Submitting...' : 'Submit Request'}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// Bulk Import Modal Component
+// ============================================================================
+interface BulkImportModalProps {
+  credentials: ZrCredentials;
+  onClose: () => void;
+  onComplete: () => void;
+}
+
+interface CsvRow {
+  name: string;
+  phone: string;
+  wilayaName: string;
+  communeName: string;
+  amount: number;
+  deliveryType: 'home' | 'pickup-point';
+  description: string;
+  weight: number;
+}
+
+const NORM = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+function parseCsv(text: string): { headers: string[]; rows: string[][] } {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row.');
+  const delim = lines[0].includes(';') ? ';' : lines[0].includes('\t') ? '\t' : ',';
+  const parseLine = (line: string): string[] => {
+    const cols: string[] = []; let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { inQ = !inQ; continue; }
+      if (c === delim && !inQ) { cols.push(cur.trim()); cur = ''; continue; }
+      cur += c;
+    }
+    cols.push(cur.trim());
+    return cols;
+  };
+  const headers = parseLine(lines[0]);
+  const rows = lines.slice(1).map(parseLine);
+  return { headers, rows };
+}
+
+function detectColumns(headers: string[]): Record<string, number> {
+  const idx = (names: string[]) => {
+    const i = headers.findIndex(h => names.some(n => NORM(h).includes(n)));
+    return i >= 0 ? i : -1;
+  };
+  return {
+    name: idx(['name', 'nom', 'client', 'customer', 'full name', 'full_name']),
+    phone: idx(['phone', 'telephone', 'tel', 'gsm', 'mobile', 'portable', 'numero', 'num']),
+    wilaya: idx(['wilaya', 'etat', 'state', 'province', 'governorate']),
+    commune: idx(['commune', 'baladia', 'city', 'town', 'municipalite', 'municipality', 'district']),
+    amount: idx(['amount', 'montant', 'cod', 'prix', 'price', 'total', 'net']),
+    deliveryType: idx(['delivery_type', 'type', 'delivery', 'delivery type']),
+    description: idx(['description', 'produits', 'products', 'notes', 'comment', 'article', 'designation']),
+    weight: idx(['weight', 'poids', 'kg']),
+  };
+}
+
+const BulkImportModal: React.FC<BulkImportModalProps> = ({ credentials, onClose, onComplete }) => {
+  const [step, setStep] = useState<'upload' | 'preview' | 'running' | 'done'>('upload');
+  const [rows, setRows] = useState<CsvRow[]>([]);
+  const [columnMap, setColumnMap] = useState<Record<string, number>>({});
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [results, setResults] = useState<{ tracking: string; status: string; error?: string }[]>([]);
+  const [progress, setProgress] = useState(0);
+  const [wilayaMap, setWilayaMap] = useState<Record<string, string>>({});
+  const [communeMap, setCommuneMap] = useState<Record<string, Record<string, string>>>({});
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const wilayas = await getAllWilayas(credentials);
+        const wMap: Record<string, string> = {};
+        for (const w of wilayas) {
+          wMap[NORM(w.name)] = w.id;
+          wMap[String(w.code)] = w.id;
+        }
+        setWilayaMap(wMap);
+      } catch {}
+    })();
+  }, [credentials]);
+
+  const handleFile = async (file: File) => {
+    setParseError(null);
+    try {
+      const text = await file.text();
+      const parsed = parseCsv(text);
+      setHeaders(parsed.headers);
+      const cols = detectColumns(parsed.headers);
+      setColumnMap(cols);
+
+      const mapped: CsvRow[] = parsed.rows.map(r => ({
+        name: cols.name >= 0 ? r[cols.name] || '' : '',
+        phone: cols.phone >= 0 ? r[cols.phone] || '' : '',
+        wilayaName: cols.wilaya >= 0 ? r[cols.wilaya] || '' : '',
+        communeName: cols.commune >= 0 ? r[cols.commune] || '' : '',
+        amount: cols.amount >= 0 ? Number(r[cols.amount]) || 0 : 0,
+        deliveryType: cols.deliveryType >= 0 && NORM(r[cols.deliveryType] || '').includes('pickup') ? 'pickup-point' as const : 'home' as const,
+        description: cols.description >= 0 ? r[cols.description] || '' : '',
+        weight: cols.weight >= 0 ? Number(r[cols.weight]) || 0.5 : 0.5,
+      }));
+      setRows(mapped);
+      setStep('preview');
+    } catch (err: any) {
+      setParseError(err?.message || 'Failed to parse CSV');
+    }
+  };
+
+  const resolveTerritories = async () => {
+    const cMap: Record<string, Record<string, string>> = {};
+    const uniqueWilayas = [...new Set(rows.map(r => NORM(r.wilayaName)).filter(Boolean))];
+    for (const wName of uniqueWilayas) {
+      const wId = wilayaMap[wName];
+      if (!wId) continue;
+      try {
+        const communes = await getCommunesByWilaya(credentials, wId);
+        const sub: Record<string, string> = {};
+        for (const c of communes) sub[NORM(c.name)] = c.id;
+        cMap[wId] = sub;
+      } catch {}
+    }
+    setCommuneMap(cMap);
+  };
+
+  const handleImport = async () => {
+    await resolveTerritories();
+    setStep('running');
+    setProgress(0);
+    const res: { tracking: string; status: string; error?: string }[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      try {
+        const wId = wilayaMap[NORM(r.wilayaName)];
+        if (!wId) throw new Error(`Unknown wilaya: ${r.wilayaName}`);
+        const cId = communeMap[wId]?.[NORM(r.communeName)];
+        if (!cId) throw new Error(`Unknown commune: ${r.communeName} in wilaya ${r.wilayaName}`);
+
+        const result = await createParcel(credentials, {
+          customer: { name: r.name, phone: { number1: r.phone } },
+          deliveryType: r.deliveryType,
+          deliveryAddress: { cityTerritoryId: wId, districtTerritoryId: cId },
+          productsDescription: r.description,
+          amount: r.amount,
+          weight: { weight: r.weight },
+          orderedProducts: [{ productName: r.description || 'Product', unitPrice: r.amount, quantity: 1, length: 10, width: 10, height: 10, stockType: 'none' }],
+        });
+        res.push({ tracking: result.parcel.trackingNumber, status: 'ok' });
+      } catch (err: any) {
+        res.push({ tracking: '', status: 'error', error: err?.message || 'unknown' });
+      }
+      setProgress(i + 1);
+      setResults([...res]);
+    }
+    setResults(res);
+    setStep('done');
+  };
+
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-2xl w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <Upload size={18} className="text-blue-400" /> Bulk Import
+          </h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={20} /></button>
+        </div>
+
+        {step === 'upload' && (
+          <div>
+            <div
+              onClick={() => inputRef.current?.click()}
+              className="border-2 border-dashed border-neutral-600 rounded-xl p-12 text-center cursor-pointer hover:border-amber-500 transition-colors"
+            >
+              <FileText size={48} className="mx-auto mb-4 text-gray-500" />
+              <p className="text-gray-300 font-medium mb-1">Click to select CSV file</p>
+              <p className="text-xs text-gray-500">Columns: name, phone, wilaya, commune, amount, delivery_type, description, weight</p>
+            </div>
+            <input ref={inputRef} type="file" accept=".csv,.txt" className="hidden" onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
+            {parseError && <p className="text-red-400 text-sm mt-4">{parseError}</p>}
+          </div>
+        )}
+
+        {step === 'preview' && (
+          <div>
+            <div className="bg-neutral-800 rounded-lg px-3 py-2 mb-4">
+              <p className="text-xs text-gray-400">Detected <span className="text-white font-bold">{rows.length}</span> rows · Columns mapped: {Object.entries(columnMap).filter(([, v]) => v >= 0).length}/{Object.keys(columnMap).length}</p>
+              {!columnMap.name && <p className="text-xs text-red-400 mt-1">⚠ Name column not found</p>}
+              {!columnMap.phone && <p className="text-xs text-red-400 mt-1">⚠ Phone column not found</p>}
+              {!columnMap.wilaya && <p className="text-xs text-red-400 mt-1">⚠ Wilaya column not found</p>}
+              {!columnMap.commune && <p className="text-xs text-red-400 mt-1">⚠ Commune column not found</p>}
+              {!columnMap.amount && <p className="text-xs text-red-400 mt-1">⚠ Amount column not found</p>}
+            </div>
+            <div className="max-h-64 overflow-y-auto mb-4 border border-neutral-800 rounded-lg">
+              <table className="w-full text-xs">
+                <thead><tr className="bg-neutral-950 text-gray-400 uppercase tracking-wider">
+                  <th className="p-2">#</th><th className="p-2">Name</th><th className="p-2">Phone</th><th className="p-2">Wilaya</th><th className="p-2">Commune</th><th className="p-2">Amount</th><th className="p-2">Type</th>
+                </tr></thead>
+                <tbody className="divide-y divide-neutral-800">
+                  {rows.slice(0, 50).map((r, i) => (
+                    <tr key={i} className="text-gray-300">
+                      <td className="p-2 text-gray-500">{i + 1}</td>
+                      <td className="p-2 font-medium text-white">{r.name}</td>
+                      <td className="p-2">{r.phone}</td>
+                      <td className="p-2">{r.wilayaName}</td>
+                      <td className="p-2">{r.communeName}</td>
+                      <td className="p-2 font-mono">{r.amount.toLocaleString()} DA</td>
+                      <td className="p-2">{r.deliveryType === 'pickup-point' ? 'Pickup' : 'Home'}</td>
+                    </tr>
+                  ))}
+                  {rows.length > 50 && <tr><td colSpan={7} className="p-2 text-center text-gray-500">... and {rows.length - 50} more</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex gap-3 justify-between items-center">
+              <button onClick={() => setStep('upload')} className="text-sm text-gray-400 hover:text-white">← Back</button>
+              <div className="flex gap-3">
+                <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-neutral-700 transition-colors">Cancel</button>
+                <button onClick={handleImport} className="px-6 py-2 rounded-lg text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors">
+                  Import {rows.length} Parcels
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {step === 'running' && (
+          <div>
+            <p className="text-sm text-gray-300 mb-4">Creating parcels... ({progress}/{rows.length})</p>
+            <div className="w-full bg-neutral-800 rounded-full h-3 mb-4 overflow-hidden">
+              <div className="bg-blue-500 h-full rounded-full transition-all duration-300" style={{ width: `${(progress / rows.length) * 100}%` }} />
+            </div>
+            <div className="max-h-48 overflow-y-auto">
+              {results.map((r, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs py-1">
+                  {r.status === 'ok' ? <CheckCircle size={14} className="text-green-400 shrink-0" /> : <AlertTriangle size={14} className="text-red-400 shrink-0" />}
+                  <span className="text-gray-400">{r.tracking || `Row ${i + 1}`}</span>
+                  {r.error && <span className="text-red-400">— {r.error}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {step === 'done' && (
+          <div>
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="bg-neutral-800 rounded-xl p-4 text-center">
+                <p className="text-2xl font-bold text-green-400">{results.filter(r => r.status === 'ok').length}</p>
+                <p className="text-xs text-gray-400">Created</p>
+              </div>
+              <div className="bg-neutral-800 rounded-xl p-4 text-center">
+                <p className="text-2xl font-bold text-red-400">{results.filter(r => r.status === 'error').length}</p>
+                <p className="text-xs text-gray-400">Failed</p>
+              </div>
+              <div className="bg-neutral-800 rounded-xl p-4 text-center">
+                <p className="text-2xl font-bold text-white">{rows.length}</p>
+                <p className="text-xs text-gray-400">Total</p>
+              </div>
+            </div>
+            {results.filter(r => r.status === 'error').length > 0 && (
+              <div className="max-h-32 overflow-y-auto mb-4 bg-red-900/10 rounded-lg p-3">
+                {results.filter(r => r.status === 'error').map((r, i) => (
+                  <p key={i} className="text-xs text-red-400 py-0.5">{r.error}</p>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => { setStep('upload'); setResults([]); }} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-neutral-700 transition-colors">Import Another</button>
+              <button onClick={() => { onComplete(); onClose(); }} className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-amber-600 hover:bg-amber-500 transition-colors">Done</button>
             </div>
           </div>
         )}
