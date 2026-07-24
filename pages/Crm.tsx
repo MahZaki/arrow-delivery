@@ -31,31 +31,45 @@ const Crm: React.FC = () => {
     setError(null);
     try {
       let syncedCount = 0;
+      const warnings: string[] = [];
+
       // Sync Ecotrack orders
-      if (user.carrier !== 'zrexpress' && user.api_token) {
+      if (user.api_token) {
         try {
           const orders = await fetchOrdersFromApi(user.api_token);
           syncedCount += await syncEcotrackOrdersToCrm(user.id, orders);
         } catch (e: any) {
           if (e.message?.includes('401')) {
-            throw new Error('Ecotrack API returned 401 — your API token may be invalid. Update it in Dashboard.');
+            warnings.push('Ecotrack API token is invalid. Use Dashboard to update it.');
+          } else {
+            warnings.push('Ecotrack sync failed: ' + e.message);
           }
-          throw e;
         }
       }
+
       // Sync ZR Express parcels
       const zrCreds = await resolveZrCredentials();
       if (zrCreds) {
-        syncedCount += await syncZrParcelsToCrm(user.id, zrCreds);
+        try {
+          syncedCount += await syncZrParcelsToCrm(user.id, zrCreds);
+        } catch (e: any) {
+          warnings.push('ZR sync failed: ' + e.message);
+        }
       }
+
       if (syncedCount > 0) {
         await loadOrders();
-      } else if (!user.api_token && !zrCreds) {
-        setError('No API token or ZR credentials set. Configure them in Dashboard or Admin panel.');
       }
+
+      if (warnings.length > 0) {
+        setError(warnings.join('. '));
+      } else if (syncedCount === 0 && !user.api_token && !zrCreds) {
+        setError('No API token or ZR credentials configured. Set them in Dashboard or Admin.');
+      }
+
       setSyncing(false);
     } catch (err: any) {
-      setError(err.message);
+      setError('Unexpected error: ' + err.message);
       setSyncing(false);
     }
   };
