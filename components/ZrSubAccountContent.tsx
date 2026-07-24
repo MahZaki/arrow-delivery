@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ResellerParcel, ZrCredentials, ZrParcel } from '../types';
+import { ResellerParcel, ZrCredentials, ZrParcel, CrmOrder } from '../types';
+import { getCrmOrders } from '../services/crmService';
 import { getMyParcels } from '../services/resellerApi';
 import { generateIndividualLabels, generateMultipleLabels, getParcelByTracking, createParcelRefund, createParcelExchange, createParcelModificationRequest } from '../services/zrExpressApi';
+import { syncZrParcelsToCrm } from '../services/crmService';
 import LoadingSpinner from './LoadingSpinner';
 import {
-  RefreshCw, Search,
-  Plus, Layers,
+  RefreshCw, Search, Plus, Layers,
   Printer, CheckSquare, Square, X,
-  RotateCcw, ArrowLeftRight, FileEdit, Loader2
+  RotateCcw, ArrowLeftRight, FileEdit, Loader2,
+  Package, Truck, CheckCircle, DollarSign, Clock, Filter
 } from 'lucide-react';
 
 interface ZrSubAccountContentProps {
@@ -18,9 +20,18 @@ interface ZrSubAccountContentProps {
 
 const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zrCredentials }) => {
   const navigate = useNavigate();
-  const [parcels, setParcels] = useState<ResellerParcel[]>([]);
+  const [orders, setOrders] = useState<CrmOrder[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 15;
+
+  // Legacy reseller parcel state (for backward compat)
+  const [legacyParcels, setLegacyParcels] = useState<ResellerParcel[]>([]);
   const [labelLoading, setLabelLoading] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
@@ -36,12 +47,15 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
   const [modifyAmount, setModifyAmount] = useState('');
   const [modifyPhone, setModifyPhone] = useState('');
 
-  const openActionModal = async (parcel: ResellerParcel, type: 'refund' | 'exchange' | 'modify') => {
-    if (!zrCredentials) return;
+  // Statuses for filter
+  const [statuses, setStatuses] = useState<string[]>([]);
+
+  const openActionModal = async (order: CrmOrder, type: 'refund' | 'exchange' | 'modify') => {
+    if (!zrCredentials || !order.zr_parcel_id) return;
     setFetchingParcel(true);
     setError(null);
     try {
-      const full = await getParcelByTracking(zrCredentials, parcel.tracking_number);
+      const full = await getParcelByTracking(zrCredentials, order.tracking_number);
       setActionParcel(full);
       if (type === 'refund') { setRefundAmount(String(full.amount)); setRefundDescription(''); setRefundDeliveryType(full.deliveryType === 'pickup-point' ? 'pickup-point' : 'home'); }
       if (type === 'exchange') { setExchangeAmount(String(full.amount)); setExchangeDescription(''); }
@@ -53,257 +67,357 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
     setFetchingParcel(false);
   };
 
-  const fetchParcels = async () => {
+  const fetchOrders = async (page = 1) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getMyParcels(profileId);
-      setParcels(data);
+      const result = await getCrmOrders([profileId], {
+        search: search || undefined,
+        status: statusFilter || undefined,
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+      });
+      setOrders(result.orders);
+      setTotalCount(result.total);
+
+      // Also fetch distinct statuses if empty
+      if (statuses.length === 0 && result.orders.length > 0) {
+        const unique = [...new Set(result.orders.map(o => o.status).filter(Boolean))] as string[];
+        setStatuses(unique);
+      }
     } catch (err: any) {
-      setError(err?.message || 'Failed to load parcels');
+      setError(err?.message || 'Failed to load orders');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchParcels();
-  }, [profileId]);
-
-  const currentParcels = parcels;
-  const allSelected = useMemo(() =>
-    currentParcels.length > 0 && currentParcels.every(p => selectedIds.has(p.id)),
-  [currentParcels, selectedIds]);
-
-  const toggleSelectAll = () => {
-    if (allSelected) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(currentParcels.map(p => p.id)));
-    }
+  // Legacy: also load reseller_parcels for backward compat
+  const fetchLegacyParcels = async () => {
+    try {
+      const data = await getMyParcels(profileId);
+      setLegacyParcels(data);
+    } catch {}
   };
 
+  useEffect(() => {
+    fetchOrders(1);
+    fetchLegacyParcels();
+  }, [profileId]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+    fetchOrders(1);
+  }, [search, statusFilter]);
+
+  const handleSync = async () => {
+    if (!zrCredentials) return;
+    setSyncing(true);
+    setError(null);
+    try {
+      await syncZrParcelsToCrm(zrCredentials, profileId);
+      await fetchOrders(currentPage);
+      setError('Sync complete');
+      setTimeout(() => setError(null), 3000);
+    } catch (err: any) {
+      setError('Sync failed: ' + (err?.message || 'unknown error'));
+    }
+    setSyncing(false);
+  };
+
+  const totalPages = Math.ceil(totalCount / pageSize);
+
+  // LEGACY: reseller parcel actions (kept for backward compat)
+  const currentLegacyParcels = legacyParcels;
+  const allSelected = useMemo(() =>
+    currentLegacyParcels.length > 0 && currentLegacyParcels.every(p => selectedIds.has(p.id)),
+  [currentLegacyParcels, selectedIds]);
+
+  const toggleSelectAll = () => {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(currentLegacyParcels.map(p => p.id)));
+  };
   const toggleSelect = (id: string) => {
     const next = new Set(selectedIds);
     if (next.has(id)) next.delete(id); else next.add(id);
     setSelectedIds(next);
   };
-
   const clearSelection = () => setSelectedIds(new Set());
 
   const handleBulkPrintLabels = async () => {
     if (!zrCredentials) return;
-    const selected = currentParcels.filter(p => selectedIds.has(p.id));
+    const selected = currentLegacyParcels.filter(p => selectedIds.has(p.id));
     if (selected.length === 0) return;
     setBulkActionLoading(true);
     setError(null);
     try {
       const result = await generateMultipleLabels(zrCredentials, selected.map(p => p.tracking_number));
-      if (result.fileUrl) {
-        window.open(result.fileUrl, '_blank');
-      }
-      if (result.failedTrackingNumbers.length > 0) {
-        setError(`${result.failedTrackingNumbers.length} label(s) failed: ${result.failedTrackingNumbers.join(', ')}`);
-      }
+      if (result.fileUrl) window.open(result.fileUrl, '_blank');
+      if (result.failedTrackingNumbers.length > 0) setError(`${result.failedTrackingNumbers.length} label(s) failed`);
     } catch (err: any) {
       setError('Bulk label print failed: ' + (err?.message || 'unknown error'));
     }
     setBulkActionLoading(false);
   };
 
-  if (loading) {
-    return <div className="min-h-[400px] flex items-center justify-center"><LoadingSpinner text="Loading your parcels..." /></div>;
+  const todayOrders = orders.filter(o => {
+    const d = new Date(o.created_at);
+    return d.toDateString() === new Date().toDateString();
+  });
+
+  const deliveredCount = orders.filter(o =>
+    o.status === 'Livré' || o.status === 'livre_non_encaisse' || o.status === 'paye_et_archive'
+  ).length;
+
+  const inTransitCount = orders.filter(o =>
+    ['en_livraison', 'en_preparation', 'vers_wilaya', 'en_hub', 'vers_hub'].includes(o.status || '')
+  ).length;
+
+  if (loading && orders.length === 0) {
+    return <div className="min-h-[400px] flex items-center justify-center"><LoadingSpinner text="Loading orders..." /></div>;
   }
 
   return (
     <div>
+      {/* Header */}
       <div className="bg-amber-900/10 border-b border-amber-600/30 sticky top-[80px] z-30 backdrop-blur-md">
         <div className="max-w-full mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Layers size={24} className="text-amber-400" /> My Parcels
+            <Layers size={24} className="text-amber-400" /> My Orders
           </h1>
           <div className="flex items-center gap-4">
-            <span className="text-xs text-gray-500">{parcels.length} parcels</span>
+            <span className="text-xs text-gray-500">{totalCount} orders</span>
             <button
-              onClick={fetchParcels}
-              disabled={loading}
+              onClick={handleSync}
+              disabled={syncing || !zrCredentials}
               className="bg-neutral-900 hover:bg-neutral-800 text-white border border-amber-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all disabled:opacity-50"
             >
-              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-              Refresh
+              <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
+              {syncing ? 'Syncing...' : 'Sync Orders'}
             </button>
           </div>
         </div>
       </div>
 
       <div className="max-w-[1600px] mx-auto px-4 py-8">
+        {/* Stats Cards */}
+        {orders.length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <div className="bg-gradient-to-br from-amber-900/20 to-neutral-900 border border-amber-600/20 rounded-xl p-4">
+              <div className="text-2xl font-bold text-white">{totalCount.toLocaleString()}</div>
+              <div className="text-xs text-amber-400/70 mt-1 flex items-center gap-1"><Package size={12} /> Total Orders</div>
+            </div>
+            <div className="bg-gradient-to-br from-emerald-900/20 to-neutral-900 border border-emerald-600/20 rounded-xl p-4">
+              <div className="text-2xl font-bold text-emerald-400">{deliveredCount.toLocaleString()}</div>
+              <div className="text-xs text-emerald-400/70 mt-1 flex items-center gap-1"><CheckCircle size={12} /> Delivered</div>
+            </div>
+            <div className="bg-gradient-to-br from-blue-900/20 to-neutral-900 border border-blue-600/20 rounded-xl p-4">
+              <div className="text-2xl font-bold text-blue-400">{inTransitCount.toLocaleString()}</div>
+              <div className="text-xs text-blue-400/70 mt-1 flex items-center gap-1"><Truck size={12} /> In Transit</div>
+            </div>
+            <div className="bg-gradient-to-br from-cyan-900/20 to-neutral-900 border border-cyan-600/20 rounded-xl p-4">
+              <div className="text-2xl font-bold text-cyan-400">{todayOrders.length.toLocaleString()}</div>
+              <div className="text-xs text-cyan-400/70 mt-1 flex items-center gap-1"><Clock size={12} /> Today</div>
+            </div>
+          </div>
+        )}
+
+        {/* Controls */}
         <div className="flex flex-col md:flex-row justify-between gap-4 mb-6">
           <button
             onClick={() => navigate('/zr-create-order')}
             className="flex items-center gap-2 bg-amber-600 hover:bg-amber-500 text-black px-4 py-2.5 rounded-xl font-bold transition-colors w-fit"
           >
-            <Plus size={18} /> New Parcel
+            <Plus size={18} /> New Order
           </button>
+
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-3 top-3 text-gray-500" size={18} />
+            <input
+              type="text"
+              placeholder="Search tracking, client, phone..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full bg-neutral-900 border border-neutral-700 text-white pl-10 pr-4 py-2.5 rounded-xl focus:border-amber-500 focus:outline-none text-sm"
+            />
+          </div>
+
+          {statuses.length > 0 && (
+            <div className="relative">
+              <Filter className="absolute left-3 top-3 text-gray-500" size={16} />
+              <select
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+                className="bg-neutral-900 border border-neutral-700 text-white pl-10 pr-8 py-2.5 rounded-xl focus:border-amber-500 focus:outline-none text-sm appearance-none cursor-pointer min-w-[160px]"
+              >
+                <option value="">All Statuses</option>
+                {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          )}
         </div>
 
         {error && (
           <div className="bg-red-900/20 border border-red-500/50 text-red-200 p-4 rounded-xl mb-6">{error}</div>
         )}
 
-        {/* Bulk Action Bar */}
+        {/* Bulk Action Bar (legacy) */}
         {zrCredentials && selectedIds.size > 0 && (
           <div className="flex items-center justify-between bg-amber-900/20 border border-amber-600/30 rounded-xl px-4 py-3 mb-4">
             <div className="flex items-center gap-3">
               <CheckSquare size={18} className="text-amber-400" />
-              <span className="text-sm text-amber-200 font-medium">{selectedIds.size} selected</span>
-              <button
-                onClick={clearSelection}
-                className="text-xs text-gray-500 hover:text-white transition-colors flex items-center gap-1"
-              >
-                <X size={14} /> Clear
-              </button>
+              <span className="text-sm text-amber-200 font-medium">{selectedIds.size} selected (legacy)</span>
+              <button onClick={clearSelection} className="text-xs text-gray-500 hover:text-white transition-colors flex items-center gap-1"><X size={14} /> Clear</button>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleBulkPrintLabels}
-                disabled={bulkActionLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-black rounded-lg text-xs font-bold transition-colors disabled:opacity-30"
-              >
-                <Printer size={14} />
-                {bulkActionLoading ? 'Processing...' : 'Print Labels'}
-              </button>
-            </div>
+            <button onClick={handleBulkPrintLabels} disabled={bulkActionLoading} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-black rounded-lg text-xs font-bold transition-colors disabled:opacity-30">
+              <Printer size={14} /> {bulkActionLoading ? 'Processing...' : 'Print Labels'}
+            </button>
           </div>
         )}
 
+        {/* Orders Table (CRM) */}
         <div className="bg-arrow-dark border border-neutral-800 rounded-2xl overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-neutral-950 text-gray-400 text-xs uppercase tracking-wider border-b border-neutral-800">
-                  {zrCredentials && (
-                    <th className="p-4 w-10">
-                      <button onClick={toggleSelectAll} className="text-gray-500 hover:text-amber-400 transition-colors">
-                        {allSelected ? <CheckSquare size={16} className="text-amber-400" /> : <Square size={16} />}
-                      </button>
-                    </th>
-                  )}
                   <th className="p-4 font-semibold">Tracking</th>
-                  <th className="p-4 font-semibold">State</th>
-                  <th className="p-4 font-semibold">COD Amount</th>
-                  <th className="p-4 font-semibold">Delivery Price</th>
+                  <th className="p-4 font-semibold">Client</th>
+                  <th className="p-4 font-semibold">Status</th>
+                  <th className="p-4 font-semibold">COD</th>
+                  <th className="p-4 font-semibold">Delivery</th>
+                  <th className="p-4 font-semibold">Product</th>
                   <th className="p-4 font-semibold text-right">Date</th>
                   <th className="p-4 font-semibold text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-800 text-sm">
-                {parcels.length > 0 ? (
-                  parcels.map((parcel) => (
-                    <tr key={parcel.id} className="hover:bg-neutral-900/50 transition-colors group">
-                      {zrCredentials && (
-                        <td className="p-4">
-                          <button onClick={(e) => { e.stopPropagation(); toggleSelect(parcel.id); }} className="text-gray-500 hover:text-amber-400 transition-colors">
-                            {selectedIds.has(parcel.id) ? <CheckSquare size={16} className="text-amber-400" /> : <Square size={16} />}
-                          </button>
-                        </td>
-                      )}
+                {orders.length > 0 ? (
+                  orders.map(order => (
+                    <tr key={order.id} className="hover:bg-neutral-900/50 transition-colors group">
                       <td className="p-4">
-                        <div className="font-bold text-white font-mono">{parcel.tracking_number}</div>
+                        <div className="font-bold text-white font-mono text-xs">{order.tracking_number}</div>
                       </td>
                       <td className="p-4">
-                        <span className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm text-white bg-amber-700">
-                          {parcel.state.replace(/_/g, ' ')}
+                        <div className="text-white font-medium text-sm">{order.client_name || '—'}</div>
+                        {order.client_phone && <div className="text-gray-500 text-xs mt-0.5">{order.client_phone}</div>}
+                      </td>
+                      <td className="p-4">
+                        <span className="inline-block px-2.5 py-1 rounded-full text-xs font-medium bg-neutral-800 text-arrow-light border border-neutral-700">
+                          {order.status || '—'}
                         </span>
                       </td>
-                      <td className="p-4 font-mono font-medium text-amber-400">
-                        {(parcel.cod_amount ?? 0).toLocaleString()} DA
+                      <td className="p-4 font-mono text-amber-400 font-medium">
+                        {order.cod_amount ? `${order.cod_amount.toLocaleString()} DA` : '—'}
                       </td>
-                      <td className="p-4 font-mono text-gray-400">
-                        {(parcel.my_delivery_price ?? 0).toLocaleString()} DA
+                      <td className="p-4 font-mono text-gray-400 text-xs">
+                        {order.delivery_price ? `${order.delivery_price.toLocaleString()} DA` : '—'}
                       </td>
-                      <td className="p-4 text-right text-gray-500">
-                        {new Date(parcel.created_at).toLocaleDateString()}
+                      <td className="p-4 text-gray-400 max-w-[150px] truncate text-xs" title={order.product_description || ''}>
+                        {order.product_description || '—'}
+                      </td>
+                      <td className="p-4 text-right text-gray-500 text-xs">
+                        {new Date(order.created_at).toLocaleDateString()}
                       </td>
                       <td className="p-4 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => navigate(`/track?tracking=${parcel.tracking_number}&carrier=zrexpress`)}
-                            className="p-2 hover:bg-amber-600/20 rounded-lg text-amber-400 transition-colors"
-                            title="View Details"
-                          >
-                            <Search size={18} />
-                          </button>
-                          {zrCredentials && (
+                          {order.zr_parcel_id && zrCredentials && (
                             <>
                               <button
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  if (labelLoading) return;
-                                  setLabelLoading(parcel.tracking_number);
-                                  try {
-                                    const result = await generateIndividualLabels(zrCredentials, { trackingNumbers: [parcel.tracking_number] });
-                                    if (result.parcelLabelFiles.length > 0) {
-                                      window.open(result.parcelLabelFiles[0].fileUrl, '_blank');
-                                    } else {
-                                      setError('Label not available for this parcel');
-                                    }
-                                  } catch (err: any) {
-                                    setError('Print failed: ' + (err?.message || 'unknown error'));
-                                  }
-                                  setLabelLoading(null);
-                                }}
-                                disabled={labelLoading !== null}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/40 rounded-lg text-amber-400 text-xs font-bold transition-colors disabled:opacity-30"
-                                title="Print Label"
-                              >
-                                {labelLoading === parcel.tracking_number ? (
-                                  <><RefreshCw size={14} className="animate-spin" /> Label</>
-                                ) : (
-                                  <><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Label</>
-                                )}
-                              </button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); openActionModal(parcel, 'refund'); }}
-                                disabled={fetchingParcel}
-                                className="p-2 hover:bg-red-600/20 rounded-lg text-red-400 transition-colors disabled:opacity-30"
+                                onClick={() => openActionModal(order, 'refund')}
+                                className="p-1.5 hover:bg-red-600/20 rounded-lg text-red-400 transition-colors"
                                 title="Refund"
                               >
-                                {fetchingParcel ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
+                                <RotateCcw size={14} />
                               </button>
                               <button
-                                onClick={(e) => { e.stopPropagation(); openActionModal(parcel, 'exchange'); }}
-                                disabled={fetchingParcel}
-                                className="p-2 hover:bg-blue-600/20 rounded-lg text-blue-400 transition-colors disabled:opacity-30"
+                                onClick={() => openActionModal(order, 'exchange')}
+                                className="p-1.5 hover:bg-blue-600/20 rounded-lg text-blue-400 transition-colors"
                                 title="Exchange"
                               >
-                                {fetchingParcel ? <Loader2 size={16} className="animate-spin" /> : <ArrowLeftRight size={16} />}
-                              </button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); openActionModal(parcel, 'modify'); }}
-                                disabled={fetchingParcel}
-                                className="p-2 hover:bg-emerald-600/20 rounded-lg text-emerald-400 transition-colors disabled:opacity-30"
-                                title="Modify"
-                              >
-                                {fetchingParcel ? <Loader2 size={16} className="animate-spin" /> : <FileEdit size={16} />}
+                                <ArrowLeftRight size={14} />
                               </button>
                             </>
                           )}
+                          <button
+                            onClick={() => navigate(`/track?tracking=${order.tracking_number}`)}
+                            className="p-1.5 hover:bg-amber-600/20 rounded-lg text-amber-400 transition-colors"
+                            title="Track"
+                          >
+                            <Search size={14} />
+                          </button>
                         </div>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={zrCredentials ? 7 : 6} className="p-12 text-center text-gray-500">
-                      No parcels yet. Create your first one!
+                    <td colSpan={8} className="p-12 text-center text-gray-500">
+                      {loading ? 'Loading...' : 'No orders found. Click "Sync Orders" to fetch from ZR Express.'}
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
-        {/* Refund Modal */}
-        {actionModal === 'refund' && actionParcel && zrCredentials && (
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="bg-neutral-950 p-4 border-t border-neutral-800 flex justify-center items-center gap-2">
+              <button
+                onClick={() => { const p = Math.max(1, currentPage - 1); setCurrentPage(p); fetchOrders(p); }}
+                disabled={currentPage === 1}
+                className="px-3 py-1 rounded bg-neutral-900 text-gray-400 hover:text-white disabled:opacity-30"
+              >Prev</button>
+              <span className="text-sm text-gray-500">Page {currentPage} of {totalPages}</span>
+              <button
+                onClick={() => { const p = Math.min(totalPages, currentPage + 1); setCurrentPage(p); fetchOrders(p); }}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 rounded bg-neutral-900 text-gray-400 hover:text-white disabled:opacity-30"
+              >Next</button>
+            </div>
+          )}
+        </div>
+
+        {/* Legacy Reseller Parcels Table (hidden by default, only shown if has data) */}
+        {legacyParcels.length > 0 && (
+          <details className="mt-8 group">
+            <summary className="cursor-pointer text-sm text-arrow-gray hover:text-arrow-light transition-colors flex items-center gap-2 mb-4">
+              <span className="font-medium">Legacy Reseller Parcels ({legacyParcels.length})</span>
+            </summary>
+            <div className="bg-arrow-dark border border-neutral-800 rounded-2xl overflow-hidden shadow-xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-neutral-950 text-gray-400 text-xs uppercase tracking-wider border-b border-neutral-800">
+                      {zrCredentials && <th className="p-4 w-10"><button onClick={toggleSelectAll} className="text-gray-500 hover:text-amber-400 transition-colors">{allSelected ? <CheckSquare size={16} className="text-amber-400" /> : <Square size={16} />}</button></th>}
+                      <th className="p-4 font-semibold">Tracking</th>
+                      <th className="p-4 font-semibold">State</th>
+                      <th className="p-4 font-semibold">COD</th>
+                      <th className="p-4 font-semibold">Delivery</th>
+                      <th className="p-4 font-semibold text-right">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-800 text-sm">
+                    {currentLegacyParcels.map(p => (
+                      <tr key={p.id} className="hover:bg-neutral-900/50">
+                        {zrCredentials && <td className="p-4"><button onClick={() => toggleSelect(p.id)} className="text-gray-500 hover:text-amber-400">{selectedIds.has(p.id) ? <CheckSquare size={16} className="text-amber-400" /> : <Square size={16} />}</button></td>}
+                        <td className="p-4 font-bold text-white font-mono text-xs">{p.tracking_number}</td>
+                        <td className="p-4"><span className="px-2.5 py-1 rounded-full text-xs bg-neutral-800 text-arrow-light border border-neutral-700">{p.state}</span></td>
+                        <td className="p-4 font-mono text-amber-400">{p.cod_amount.toLocaleString()} DA</td>
+                        <td className="p-4 font-mono text-gray-400 text-xs">{p.zr_delivery_price.toLocaleString()} DA</td>
+                        <td className="p-4 text-right text-gray-500 text-xs">{new Date(p.created_at).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+        )}
+
+        {/* Action Modals (legacy) */}
+        {actionModal === 'refund' && actionParcel && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setActionModal(null)}>
             <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-6">
@@ -330,9 +444,10 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
                 <button onClick={() => setActionModal(null)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-neutral-700 transition-colors">Cancel</button>
                 <button onClick={async () => {
                   if (!actionParcel || actionLoading) return;
-                  setActionLoading(true); setError(null);
+                  setActionLoading(true);
+                  setError(null);
                   try {
-                    await createParcelRefund(zrCredentials, {
+                    await createParcelRefund(zrCredentials!, {
                       customer: { customerId: actionParcel.customer.customerId, name: actionParcel.customer.name, phone: { number1: actionParcel.customer.phone.number1 } },
                       deliveryAddress: { cityTerritoryId: actionParcel.deliveryAddress.cityTerritoryId, districtTerritoryId: actionParcel.deliveryAddress.districtTerritoryId, street: actionParcel.deliveryAddress.street },
                       hubId: actionParcel.deliveryAddress.hubId,
@@ -340,7 +455,8 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
                       description: refundDescription || 'Refund',
                       amount: Number(refundAmount),
                     });
-                    setActionModal(null); await fetchParcels(); setError('Refund created successfully');
+                    setActionModal(null);
+                    setError('Refund created successfully');
                   } catch (err: any) { setError('Refund failed: ' + (err?.message || 'unknown error')); }
                   setActionLoading(false);
                 }} disabled={actionLoading} className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-500 transition-colors disabled:opacity-30">
@@ -351,8 +467,7 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
           </div>
         )}
 
-        {/* Exchange Modal */}
-        {actionModal === 'exchange' && actionParcel && zrCredentials && (
+        {actionModal === 'exchange' && actionParcel && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setActionModal(null)}>
             <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-6">
@@ -360,27 +475,19 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
                 <button onClick={() => setActionModal(null)} className="text-gray-500 hover:text-white"><X size={20} /></button>
               </div>
               <div className="text-xs text-gray-500 font-mono mb-4 bg-neutral-800 rounded-lg px-3 py-2">{actionParcel.trackingNumber}</div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-2">Amount (DA)</label>
-                <input type="number" value={exchangeAmount} onChange={e => setExchangeAmount(e.target.value)} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
-              </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
-                <input type="text" value={exchangeDescription} onChange={e => setExchangeDescription(e.target.value)} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
-              </div>
-              <div className="mb-6 text-xs text-gray-500 bg-neutral-800 rounded-lg px-3 py-2">
-                Creates an exchange parcel linked to the original. Products and weight from the original parcel will be used.
-              </div>
+              <div className="mb-4"><label className="block text-sm font-medium text-gray-300 mb-2">Amount (DA)</label><input type="number" value={exchangeAmount} onChange={e => setExchangeAmount(e.target.value)} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" /></div>
+              <div className="mb-4"><label className="block text-sm font-medium text-gray-300 mb-2">Description</label><input type="text" value={exchangeDescription} onChange={e => setExchangeDescription(e.target.value)} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" /></div>
               <div className="flex gap-3 justify-end">
                 <button onClick={() => setActionModal(null)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-neutral-700 transition-colors">Cancel</button>
                 <button onClick={async () => {
                   if (!actionParcel || actionLoading) return;
-                  setActionLoading(true); setError(null);
+                  setActionLoading(true);
+                  setError(null);
                   try {
                     const products = (actionParcel.orderedProducts || []).length > 0
                       ? actionParcel.orderedProducts.map(p => ({ productId: p.productId, productName: p.productName, unitPrice: p.unitPrice, quantity: p.quantity, length: p.dimensions?.length || 10, width: p.dimensions?.width || 10, height: p.dimensions?.height || 10, stockType: p.stockType || 'none' }))
                       : [{ productName: 'Exchange', unitPrice: Number(exchangeAmount), quantity: 1, length: 10, width: 10, height: 10, stockType: 'none' }];
-                    await createParcelExchange(zrCredentials, {
+                    await createParcelExchange(zrCredentials!, {
                       customer: { customerId: actionParcel.customer.customerId, name: actionParcel.customer.name, phone: { number1: actionParcel.customer.phone.number1 } },
                       orderedProducts: products,
                       weight: { weight: actionParcel.weight?.weight || 0.5 },
@@ -388,7 +495,8 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
                       amount: Number(exchangeAmount),
                       description: exchangeDescription || 'Exchange',
                     });
-                    setActionModal(null); await fetchParcels(); setError('Exchange created successfully');
+                    setActionModal(null);
+                    setError('Exchange created successfully');
                   } catch (err: any) { setError('Exchange failed: ' + (err?.message || 'unknown error')); }
                   setActionLoading(false);
                 }} disabled={actionLoading} className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors disabled:opacity-30">
@@ -399,8 +507,7 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
           </div>
         )}
 
-        {/* Modify Modal */}
-        {actionModal === 'modify' && actionParcel && zrCredentials && (
+        {actionModal === 'modify' && actionParcel && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setActionModal(null)}>
             <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-6">
@@ -408,27 +515,22 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
                 <button onClick={() => setActionModal(null)} className="text-gray-500 hover:text-white"><X size={20} /></button>
               </div>
               <div className="text-xs text-gray-500 font-mono mb-4 bg-neutral-800 rounded-lg px-3 py-2">{actionParcel.trackingNumber}</div>
-              <p className="text-xs text-gray-500 mb-4">Request changes after the parcel is beyond "Confirmed au Bureau". Changes are reviewed by the hub.</p>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-2">New Amount (DA) — leave empty to keep current</label>
-                <input type="number" value={modifyAmount} onChange={e => setModifyAmount(e.target.value)} placeholder={`Current: ${actionParcel.amount}`} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
-              </div>
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-300 mb-2">New Phone — leave empty to keep current</label>
-                <input type="text" value={modifyPhone} onChange={e => setModifyPhone(e.target.value)} placeholder={`Current: ${actionParcel.customer.phone.number1}`} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" />
-              </div>
+              <div className="mb-4"><label className="block text-sm font-medium text-gray-300 mb-2">New Amount (DA)</label><input type="number" value={modifyAmount} onChange={e => setModifyAmount(e.target.value)} placeholder={`Current: ${actionParcel.amount}`} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" /></div>
+              <div className="mb-6"><label className="block text-sm font-medium text-gray-300 mb-2">New Phone</label><input type="text" value={modifyPhone} onChange={e => setModifyPhone(e.target.value)} placeholder={`Current: ${actionParcel.customer.phone.number1}`} className="w-full bg-neutral-800 border border-neutral-700 text-white px-3 py-2 rounded-lg focus:border-amber-500 focus:outline-none text-sm" /></div>
               <div className="flex gap-3 justify-end">
                 <button onClick={() => setActionModal(null)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-neutral-700 transition-colors">Cancel</button>
                 <button onClick={async () => {
                   if (!actionParcel || actionLoading) return;
-                  setActionLoading(true); setError(null);
+                  setActionLoading(true);
+                  setError(null);
                   try {
-                    await createParcelModificationRequest(zrCredentials, {
+                    await createParcelModificationRequest(zrCredentials!, {
                       parcelId: actionParcel.id,
                       ...(modifyAmount ? { amount: Number(modifyAmount) } : {}),
                       ...(modifyPhone ? { phone: { number1: modifyPhone } } : {}),
                     });
-                    setActionModal(null); await fetchParcels(); setError('Modification request submitted');
+                    setActionModal(null);
+                    setError('Modification request submitted');
                   } catch (err: any) { setError('Modification failed: ' + (err?.message || 'unknown error')); }
                   setActionLoading(false);
                 }} disabled={actionLoading} className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-colors disabled:opacity-30">
@@ -438,7 +540,6 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
             </div>
           </div>
         )}
-        </div>
       </div>
     </div>
   );
