@@ -1,7 +1,4 @@
-import { supabase } from '../lib/supabase';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const FUNCTION_URL = `${supabaseUrl}/functions/v1/wa-proxy`;
+const WA_SENDER_PROXY = '/api/wa/send-message';
 
 export interface WaSenderResponse {
   success: boolean;
@@ -17,29 +14,36 @@ export async function sendWhatsAppText(
   to: string,
   text: string
 ): Promise<WaSenderResponse> {
-  const session = await supabase.auth.getSession();
-  const accessToken = session.data.session?.access_token;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
 
-  const response = await fetch(FUNCTION_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ apiKey, to, text }),
-  });
+  try {
+    const response = await fetch(WA_SENDER_PROXY, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ to, text }),
+    });
 
-  const data = await response.json();
+    const raw = await response.text();
+    let data: any;
+    try { data = JSON.parse(raw); } catch { throw new Error(`WaSender non-JSON response: ${raw.slice(0, 200)}`); }
 
-  if (!response.ok) {
-    throw new Error(data.message || `Proxy error: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(data.message || `WaSender API error: ${response.status}`);
+    }
+
+    if (!data.success) {
+      throw new Error(data.message || 'WaSender request failed');
+    }
+
+    return data;
+  } finally {
+    clearTimeout(timer);
   }
-
-  if (!data.success) {
-    throw new Error(data.message || 'WaSender request failed');
-  }
-
-  return data;
 }
 
 export function formatPhone(phone: string): string {
