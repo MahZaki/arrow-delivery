@@ -318,7 +318,7 @@ const Dashboard: React.FC = () => {
       );
     }
     if (user?.master_id) {
-      return <ZrSubAccountContent profileId={user.id} zrCredentials={zrCreds} />;
+      return <ZrSubAccountContent profileId={user.id} masterId={user.master_id} zrCredentials={zrCreds} />;
     }
     return <ZrDashboardContent credentials={zrCreds} />;
   }

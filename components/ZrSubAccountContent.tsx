@@ -15,10 +15,11 @@ import {
 
 interface ZrSubAccountContentProps {
   profileId: string;
+  masterId?: string | null;
   zrCredentials?: ZrCredentials | null;
 }
 
-const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zrCredentials }) => {
+const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, masterId, zrCredentials }) => {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<CrmOrder[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -67,11 +68,13 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
     setFetchingParcel(false);
   };
 
+  const profileIds = useMemo(() => masterId ? [profileId, masterId] : [profileId], [profileId, masterId]);
+
   const fetchOrders = async (page = 1) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await getCrmOrders([profileId], {
+      const result = await getCrmOrders(profileIds, {
         search: search || undefined,
         status: statusFilter || undefined,
         limit: pageSize,
@@ -111,11 +114,12 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, zr
   }, [search, statusFilter]);
 
   const handleSync = async () => {
+    const targetId = masterId || profileId;
     if (!zrCredentials) return;
     setSyncing(true);
     setError(null);
     try {
-      await syncZrParcelsToCrm(zrCredentials, profileId);
+      await syncZrParcelsToCrm(targetId, zrCredentials);
       await fetchOrders(currentPage);
       setError('Sync complete');
       setTimeout(() => setError(null), 3000);
