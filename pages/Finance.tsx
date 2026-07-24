@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useCarrier } from '../contexts/CarrierContext';
 import { fetchOrdersFromApi, fetchArchivedFromDb } from '../services/api';
 import { Order, Transaction, ZrCredentials, ZrSupplierPayment, ZrSupplierBalance, SubAccountBalance, SubAccountPayout, PayoutParcel, ResellerParcel } from '../types';
 import { getTransactions, getBalance, addTransaction } from '../services/transactionApi';
@@ -26,8 +25,8 @@ type TimePeriod = '7d' | '30d' | 'all';
 
 const Finance: React.FC = () => {
   const { user, resolveZrCredentials, isMaster } = useAuth();
-  const { carrier } = useCarrier();
   const navigate = useNavigate();
+  const carrier = user?.carrier || 'ecotrack';
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);

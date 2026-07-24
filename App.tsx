@@ -16,14 +16,12 @@ import Claims from './pages/Claims';
 import Webhooks from './pages/Webhooks';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
-import { CarrierProvider } from './contexts/CarrierContext';
 import { DataProvider } from './contexts/DataContext';
 
 const App: React.FC = () => {
   return (
     <Router>
       <AuthProvider>
-        <CarrierProvider>
         <DataProvider>
           <div className="bg-arrow-black min-h-screen text-arrow-light flex flex-col font-sans selection:bg-arrow-green selection:text-black">
             <Navbar />
@@ -49,7 +47,6 @@ const App: React.FC = () => {
             <Footer />
           </div>
         </DataProvider>
-        </CarrierProvider>
       </AuthProvider>
     </Router>
   );

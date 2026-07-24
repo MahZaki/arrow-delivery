@@ -829,6 +829,7 @@ export interface UserProfile {
   id: string;
   email: string;
   role: 'admin' | 'client';
+  carrier: 'ecotrack' | 'zrexpress';
   api_token: string | null;
   zr_tenant_id?: string | null;
   zr_api_key?: string | null;

@@ -12,7 +12,9 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateApiToken: (token: string) => Promise<boolean>;
   updateZrCredentials: (tenantId: string, apiKey: string) => Promise<boolean>;
-  createSubAccount: (email: string, password: string, markupType: 'flat' | 'percentage', markupValue: number) => Promise<{ success: boolean; error?: string }>;
+  updateCarrier: (carrier: 'ecotrack' | 'zrexpress') => Promise<boolean>;
+  updateUserCarrier: (userId: string, carrier: 'ecotrack' | 'zrexpress') => Promise<boolean>;
+  createSubAccount: (email: string, password: string, carrier: 'ecotrack' | 'zrexpress', markupType: 'flat' | 'percentage', markupValue: number) => Promise<{ success: boolean; error?: string }>;
   updateSubAccountMarkup: (subId: string, markupType: 'flat' | 'percentage', markupValue: number) => Promise<boolean>;
   resolveZrCredentials: () => Promise<ZrCredentials | null>;
 }
@@ -36,13 +38,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // If profile doesn't exist yet, we create a basic client profile object for state
         // In a real app, a Database Trigger usually creates this.
         console.warn("Profile not found in DB, using default client state.");
-        const newProfile: UserProfile = { id: userId, email, role: 'client', api_token: null };
+        const newProfile: UserProfile = { id: userId, email, role: 'client', carrier: 'ecotrack', api_token: null };
         setUser(newProfile);
         
         // Optional: Attempt to insert it if missing (lazy creation)
-        await supabase.from('profiles').insert([{ id: userId, email, role: 'client' }]);
+        await supabase.from('profiles').insert([{ id: userId, email, role: 'client', carrier: 'ecotrack' }]);
       } else {
-        setUser(data as UserProfile);
+        const profile = data as UserProfile;
+        if (!profile.carrier) (profile as any).carrier = 'ecotrack';
+        setUser(profile);
       }
     } catch (e) {
       console.error("Error fetching profile", e);
@@ -102,7 +106,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     
     if (data.user) {
-        await supabase.from('profiles').insert([{ id: data.user.id, email, role: 'client' }]);
+        await supabase.from('profiles').insert([{ id: data.user.id, email, role: 'client', carrier: 'ecotrack' }]);
     }
 
     return { success: true };
@@ -134,6 +138,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const createSubAccount = async (
     email: string, password: string,
+    carrier: 'ecotrack' | 'zrexpress',
     markupType: 'flat' | 'percentage', markupValue: number
   ): Promise<{ success: boolean; error?: string }> => {
     if (!isMaster) return { success: false, error: 'Only the master account can create sub-accounts.' };
@@ -143,7 +148,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     if (data.user) {
       await supabase.from('profiles').insert([{
-        id: data.user.id, email, role: 'client',
+        id: data.user.id, email, role: 'client', carrier,
         master_id: user!.id,
         markup_type: markupType, markup_value: markupValue,
       }]);
@@ -198,6 +203,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return false;
   };
 
+  const updateCarrier = async (carrier: 'ecotrack' | 'zrexpress'): Promise<boolean> => {
+    if (!user) return false;
+    const { error } = await supabase
+      .from('profiles')
+      .update({ carrier })
+      .eq('id', user.id);
+    if (!error) {
+      setUser({ ...user, carrier });
+      return true;
+    }
+    return false;
+  };
+
+  const updateUserCarrier = async (userId: string, carrier: 'ecotrack' | 'zrexpress'): Promise<boolean> => {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ carrier })
+      .eq('id', userId);
+    return !error;
+  };
+
   const value = useMemo(() => ({ 
     user,
     isAuthenticated: !!user, 
@@ -208,6 +234,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     logout,
     updateApiToken,
     updateZrCredentials,
+    updateCarrier,
+    updateUserCarrier,
     createSubAccount,
     updateSubAccountMarkup,
     resolveZrCredentials,

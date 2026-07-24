@@ -7,20 +7,17 @@ import StatusBadge from '../components/StatusBadge';
 import ZrDashboardContent from '../components/ZrDashboardContent';
 import ZrSubAccountContent from '../components/ZrSubAccountContent';
 import { useAuth } from '../contexts/AuthContext';
-import { useCarrier } from '../contexts/CarrierContext';
 import AdminDashboardView from '../components/AdminDashboardView';
 import { 
     Package, Truck, CheckCircle, RefreshCw, Search, 
     MapPin, PauseCircle, CloudUpload, Archive,
-    RotateCcw, Plus, ChevronDown, Home, Filter, Calendar, FilePlus, Layers, List,
-    Truck as ZrIcon
+    RotateCcw, Plus, ChevronDown, Home, Filter, Calendar, FilePlus, Layers, List
 } from 'lucide-react';
 import { WILAYAS } from '../constants';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, updateApiToken, updateZrCredentials, resolveZrCredentials } = useAuth();
-  const { carrier, setCarrier } = useCarrier();
   
   // State for Client Dashboard
   const [orders, setOrders] = useState<Order[]>([]);
@@ -269,7 +266,7 @@ const Dashboard: React.FC = () => {
   // --- Render ---
 
   // ZR mode → show ZR dashboard (master sees all, sub-accounts see own)
-  if (carrier === 'zrexpress') {
+  if ((user?.carrier || 'ecotrack') === 'zrexpress') {
     if (resolvingMasterCreds) {
       return <LoadingSpinner />;
     }
@@ -325,7 +322,7 @@ const Dashboard: React.FC = () => {
       return <AdminDashboardView />;
   }
 
-  if (loading && carrier === 'ecotrack') {
+  if (loading && (user?.carrier || 'ecotrack') !== 'zrexpress') {
       return <div className="min-h-screen flex items-center justify-center"><LoadingSpinner text="Loading Dashboard..." /></div>;
   }
 
@@ -371,35 +368,12 @@ const Dashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-arrow-black pb-20">
       {/* Top Header */}
-      <div className={`${carrier === 'zrexpress' ? 'bg-amber-900/10 border-b border-amber-600/30' : 'bg-arrow-dark/50 border-b border-arrow-deepGreen/30'} sticky top-[80px] z-30 backdrop-blur-md`}>
+      <div className="bg-arrow-dark/50 border-b border-arrow-deepGreen/30 sticky top-[80px] z-30 backdrop-blur-md">
           <div className="max-w-full mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
               <div className="flex items-center gap-4">
                   <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                      <Layers size={24} className={carrier === 'zrexpress' ? 'text-amber-400' : 'text-arrow-green'} /> My Dashboard
+                      <Layers size={24} className="text-arrow-green" /> My Dashboard
                   </h1>
-                  {/* Carrier Toggle */}
-                  <div className="flex bg-neutral-900 rounded-lg border border-neutral-700 overflow-hidden">
-                      <button
-                          onClick={() => setCarrier('ecotrack')}
-                          className={`px-3 py-1.5 text-xs font-bold transition-colors ${
-                              carrier === 'ecotrack'
-                              ? 'bg-arrow-green text-black'
-                              : 'text-gray-400 hover:text-white'
-                          }`}
-                      >
-                          Arrow
-                      </button>
-                      <button
-                          onClick={() => setCarrier('zrexpress')}
-                          className={`px-3 py-1.5 text-xs font-bold transition-colors ${
-                              carrier === 'zrexpress'
-                              ? 'bg-amber-500 text-black'
-                              : 'text-gray-400 hover:text-white'
-                          }`}
-                      >
-                          ZR Express
-                      </button>
-                  </div>
               </div>
               <div className="flex items-center gap-4">
                   {lastSync && <span className="text-xs text-gray-500 hidden md:block">Last synced: {new Date(lastSync).toLocaleString()}</span>}

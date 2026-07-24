@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
-import { ResellerParcel } from '../types';
+import { ResellerParcel, ZrCredentials } from '../types';
+import { searchParcels } from './zrExpressApi';
 
 export async function getMyParcels(profileId: string): Promise<ResellerParcel[]> {
   const { data, error } = await supabase
@@ -67,4 +68,61 @@ export async function saveParcel(
 
   if (error) throw new Error(error.message);
   return data.id;
+}
+
+export async function syncZrParcelsToReseller(
+  profileId: string,
+  creds: ZrCredentials
+): Promise<{ inserted: number; updated: number }> {
+  let inserted = 0;
+  let updated = 0;
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    const res = await searchParcels(creds, {
+      pageNumber: page,
+      pageSize: 100,
+      orderBy: ['createdAt desc'],
+    });
+
+    for (const parcel of res.items) {
+      const payload = {
+        profile_id: profileId,
+        zr_parcel_id: parcel.id,
+        tracking_number: parcel.trackingNumber,
+        cod_amount: parcel.amount,
+        zr_delivery_price: parcel.deliveryPrice,
+        my_delivery_price: parcel.deliveryPrice,
+        zr_return_price: parcel.ReturnPrice ?? 0,
+        state: parcel.state.name,
+        delivered_at: parcel.state.name === 'Livré' ? parcel.lastStateUpdateAt : null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const existing = await supabase
+        .from('reseller_parcels')
+        .select('id')
+        .eq('zr_parcel_id', parcel.id)
+        .maybeSingle();
+
+      if (existing.data) {
+        const { error: updateError } = await supabase
+          .from('reseller_parcels')
+          .update(payload)
+          .eq('id', existing.data.id);
+        if (!updateError) updated++;
+      } else {
+        const { error: insertError } = await supabase
+          .from('reseller_parcels')
+          .insert({ ...payload, created_at: new Date().toISOString() });
+        if (!insertError) inserted++;
+      }
+    }
+
+    hasMore = res.hasNext;
+    page++;
+  }
+
+  return { inserted, updated };
 }
