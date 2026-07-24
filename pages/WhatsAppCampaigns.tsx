@@ -1,17 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { WhatsAppCampaign, CrmOrder } from '../types';
 import { getCampaigns, createCampaign, getRecipients, insertRecipients, markRecipientSent, updateCampaignStatus, updateCampaign, deleteCampaign, interpolateTemplate } from '../services/whatsappCampaignService';
 import { sendWhatsAppText, formatPhone } from '../services/whatsappService';
 import { getCrmOrders } from '../services/crmService';
+import { supabase } from '../lib/supabase';
 import {
   MessageSquare, Plus, Loader2, Send, CheckCircle, XCircle, Clock,
   ChevronRight, Eye, Users, FileText, Trash2, PauseCircle, Play,
-  AlertCircle, Smartphone
+  AlertCircle, Smartphone, ArrowLeft
 } from 'lucide-react';
 
 const WhatsAppCampaigns: React.FC = () => {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [campaigns, setCampaigns] = useState<WhatsAppCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -46,6 +49,41 @@ const WhatsAppCampaigns: React.FC = () => {
   }, [user?.id]);
 
   useEffect(() => { loadCampaigns(); }, [loadCampaigns]);
+
+  // Handle pre-selected orders from CRM
+  useEffect(() => {
+    const selected = searchParams.get('selected');
+    if (!selected || !user?.id) return;
+    setSearchParams({}, { replace: true });
+
+    (async () => {
+      setShowCreate(true);
+      setCarrierFilter('all');
+      setStatusFilter('');
+      setPreviewLoading(true);
+      try {
+        const ids = selected.split(',').slice(0, 200);
+        const allOrders: CrmOrder[] = [];
+        for (let i = 0; i < ids.length; i += 50) {
+          const chunk = ids.slice(i, i + 50);
+          const { data, error } = await supabase
+            .from('crm_orders')
+            .select('*')
+            .eq('profile_id', user.id)
+            .in('id', chunk);
+          if (data) allOrders.push(...(data as CrmOrder[]));
+        }
+        const withPhone = allOrders.filter(o => o.client_phone && o.client_phone.trim().length > 0);
+        setPreviewOrders(withPhone);
+        setName(`Campaign ${new Date().toLocaleDateString()} (${withPhone.length} orders)`);
+        setTemplate(`Bonjour {client_name}, votre commande est confirmée. Merci!`);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setPreviewLoading(false);
+      }
+    })();
+  }, []);
 
   const loadPreview = async () => {
     if (!user?.id) return;

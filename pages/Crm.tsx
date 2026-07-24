@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { CrmOrder } from '../types';
 import { getCrmOrders, syncEcotrackOrdersToCrm, syncZrParcelsToCrm } from '../services/crmService';
@@ -7,7 +7,8 @@ import { fetchOrdersFromApi } from '../services/api';
 import {
   Search, ChevronDown, ChevronUp, Package, Truck,
   Phone, MapPin, DollarSign, Calendar, User, Box,
-  Loader2, Filter, X, ChevronLeft, ChevronRight, RefreshCw, CheckCircle, Send, MessageSquare
+  Loader2, Filter, X, ChevronLeft, ChevronRight, RefreshCw, CheckCircle, Send, MessageSquare,
+  Square, CheckSquare
 } from 'lucide-react';
 
 const Crm: React.FC = () => {
@@ -28,6 +29,7 @@ const Crm: React.FC = () => {
   const [waText, setWaText] = useState('');
   const [waSending, setWaSending] = useState(false);
   const [waResult, setWaResult] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const pageSize = 50;
 
   const handleSync = async () => {
@@ -93,6 +95,30 @@ const Crm: React.FC = () => {
     } finally {
       setWaSending(false);
     }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllPage = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      orders.forEach(o => next.add(o.id));
+      return next;
+    });
+  };
+
+  const deselectAll = () => setSelectedIds(new Set());
+
+  const handleCreateCampaign = () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    navigate(`/whatsapp?selected=${ids.join(',')}`);
   };
 
   const loadOrders = useCallback(async () => {
@@ -191,6 +217,19 @@ const Crm: React.FC = () => {
           </div>
         </div>
 
+        {/* Selection Toolbar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-4 mb-4 px-4 py-3 bg-arrow-green/10 border border-arrow-green/30 rounded-xl">
+            <span className="text-sm text-white font-bold">{selectedIds.size} selected</span>
+            <button onClick={deselectAll} className="text-xs text-gray-400 hover:text-white transition-colors">Clear selection</button>
+            <div className="flex-1" />
+            <button onClick={handleCreateCampaign}
+              className="flex items-center gap-2 px-4 py-2 bg-arrow-green text-black rounded-xl font-bold hover:bg-emerald-400 transition-colors text-sm">
+              <MessageSquare size={16} /> Create Campaign
+            </button>
+          </div>
+        )}
+
         {/* Error */}
         {error && (
           <div className="bg-red-900/30 border border-red-500/50 rounded-xl p-4 text-red-300 mb-6">{error}</div>
@@ -218,6 +257,11 @@ const Crm: React.FC = () => {
               <table className="w-full text-left">
                 <thead className="bg-neutral-950 text-gray-400 text-xs uppercase tracking-wider">
                   <tr>
+                    <th className="px-4 py-3 w-10">
+                      <button onClick={selectedIds.size === orders.length ? deselectAll : selectAllPage} className="text-gray-400 hover:text-white transition-colors">
+                        {selectedIds.size === orders.length ? <CheckSquare size={16} /> : <Square size={16} />}
+                      </button>
+                    </th>
                     <th className="px-4 py-3 w-8"></th>
                     <th className="px-4 py-3">Carrier</th>
                     <th className="px-4 py-3">Tracking</th>
@@ -236,6 +280,11 @@ const Crm: React.FC = () => {
                         className="hover:bg-neutral-900/50 cursor-pointer transition-colors"
                         onClick={() => setExpandedId(expandedId === o.id ? null : o.id)}
                       >
+                        <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                          <button onClick={() => toggleSelect(o.id)} className="text-gray-400 hover:text-white transition-colors">
+                            {selectedIds.has(o.id) ? <CheckSquare size={16} className="text-arrow-green" /> : <Square size={16} />}
+                          </button>
+                        </td>
                         <td className="px-4 py-3 text-gray-500">
                           {expandedId === o.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                         </td>
@@ -271,7 +320,7 @@ const Crm: React.FC = () => {
                       {/* Expanded details */}
                       {expandedId === o.id && (
                         <tr key={`${o.id}-details`}>
-                          <td colSpan={9} className="px-8 py-6 bg-neutral-900/30">
+                          <td colSpan={10} className="px-8 py-6 bg-neutral-900/30">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                               <div>
                                 <h4 className="text-xs uppercase text-gray-500 font-bold mb-3 flex items-center gap-2">
