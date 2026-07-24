@@ -146,15 +146,11 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
 
   useEffect(() => { fetchOwners(); }, [user?.id]);
 
-  const allSelected = useMemo(() =>
-    currentParcels.length > 0 && currentParcels.every(p => selectedIds.has(p.id)),
-  [currentParcels, selectedIds]);
-
   const toggleSelectAll = () => {
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(currentParcels.map(p => p.id)));
+      setSelectedIds(new Set(filteredParcels.map(p => p.id)));
     }
   };
 
@@ -167,7 +163,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
   const clearSelection = () => setSelectedIds(new Set());
 
   const handleBulkPrintLabels = async () => {
-    const selected = currentParcels.filter(p => selectedIds.has(p.id));
+    const selected = filteredParcels.filter(p => selectedIds.has(p.id));
     if (selected.length === 0) return;
     setBulkActionLoading(true);
     setError(null);
@@ -186,7 +182,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
   };
 
   const handleBulkDelete = async () => {
-    const selected = currentParcels.filter(p => selectedIds.has(p.id));
+    const selected = filteredParcels.filter(p => selectedIds.has(p.id));
     if (selected.length === 0) return;
     setBulkActionLoading(true);
     setError(null);
@@ -287,8 +283,11 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
     });
   }, [parcels, search, dateFrom, dateTo, ownerMap, subAccountFilter]);
 
+  const allSelected = useMemo(() =>
+    filteredParcels.length > 0 && filteredParcels.every(p => selectedIds.has(p.id)),
+  [filteredParcels, selectedIds]);
+
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-  const currentParcels = filteredParcels;
 
   const totalAmount = useMemo(() => {
     return parcels.reduce((sum, p) => sum + p.amount, 0);
@@ -485,8 +484,8 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-800 text-sm">
-                {currentParcels.length > 0 ? (
-                  currentParcels.map((parcel) => (
+                {filteredParcels.length > 0 ? (
+                  filteredParcels.map((parcel) => (
                     <tr key={parcel.id} className="hover:bg-neutral-900/50 transition-colors group">
                       <td className="p-4">
                         <button onClick={(e) => { e.stopPropagation(); toggleSelect(parcel.id); }} className="text-gray-500 hover:text-amber-400 transition-colors">
