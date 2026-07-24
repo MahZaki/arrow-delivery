@@ -13,7 +13,7 @@ import {
 const Admin: React.FC = () => {
   const {
     user, isMaster,
-    createSubAccount, updateSubAccountMarkup, updateUserCarrier,
+    createSubAccount, updateSubAccountMarkup, updateUserCarrier, refreshProfile,
   } = useAuth();
   const navigate = useNavigate();
 
@@ -108,7 +108,7 @@ const Admin: React.FC = () => {
       .update({ wa_sender_api_key: apiKey || null })
       .eq('id', userId);
     setProcessingId(null);
-    if (!error) { showToast('success', 'WaSender key updated'); loadUsers(); }
+    if (!error) { showToast('success', 'WaSender key updated'); loadUsers(); if (userId === user?.id) await refreshProfile(); }
     else showToast('error', 'Failed to update WaSender key');
   };
 

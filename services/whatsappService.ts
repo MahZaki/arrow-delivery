@@ -1,4 +1,4 @@
-const WA_SENDER_URL = 'https://wasenderapi.com/api/send-message';
+const WA_SENDER_URL = 'https://www.wasenderapi.com/api/send-message';
 
 export interface WaSenderResponse {
   success: boolean;
@@ -19,26 +19,36 @@ export async function sendWhatsAppText(
   to: string,
   text: string
 ): Promise<WaSenderResponse> {
-  const response = await fetch(WA_SENDER_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ to, text }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
 
-  const data = await response.json();
+  try {
+    const response = await fetch(WA_SENDER_URL, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ to, text }),
+    });
 
-  if (!response.ok) {
-    throw new Error(data.message || `WaSender API error: ${response.status}`);
+    const raw = await response.text();
+    let data: any;
+    try { data = JSON.parse(raw); } catch { throw new Error(`WaSender non-JSON response: ${raw.slice(0, 200)}`); }
+
+    if (!response.ok) {
+      throw new Error(data.message || `WaSender API error: ${response.status}`);
+    }
+
+    if (!data.success) {
+      throw new Error(data.message || 'WaSender request failed');
+    }
+
+    return data;
+  } finally {
+    clearTimeout(timer);
   }
-
-  if (!data.success) {
-    throw new Error(data.message || 'WaSender request failed');
-  }
-
-  return data;
 }
 
 export function formatPhone(phone: string): string {

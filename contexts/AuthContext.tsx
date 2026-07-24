@@ -17,6 +17,7 @@ interface AuthContextType {
   createSubAccount: (email: string, password: string, carrier: 'ecotrack' | 'zrexpress', markupType: 'flat' | 'percentage', markupValue: number) => Promise<{ success: boolean; error?: string }>;
   updateSubAccountMarkup: (subId: string, markupType: 'flat' | 'percentage', markupValue: number) => Promise<boolean>;
   resolveZrCredentials: () => Promise<ZrCredentials | null>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -50,6 +51,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     } catch (e) {
       console.error("Error fetching profile", e);
+    }
+  };
+
+  const refreshProfile = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      await fetchProfile(session.user.id, session.user.email!);
     }
   };
 
@@ -239,6 +247,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     createSubAccount,
     updateSubAccountMarkup,
     resolveZrCredentials,
+    refreshProfile,
   }), [user, isLoading, resolveZrCredentials]);
 
   return (
