@@ -15,6 +15,7 @@ import ZrCreateOrder from './pages/ZrCreateOrder';
 import Claims from './pages/Claims';
 import Webhooks from './pages/Webhooks';
 import Crm from './pages/Crm';
+import WhatsAppCampaigns from './pages/WhatsAppCampaigns';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
 import { DataProvider } from './contexts/DataContext';
@@ -42,6 +43,7 @@ const App: React.FC = () => {
                   <Route path="/claims" element={<Claims />} />
                   <Route path="/webhooks" element={<Webhooks />} />
                   <Route path="/crm" element={<Crm />} />
+                  <Route path="/whatsapp" element={<WhatsAppCampaigns />} />
                   <Route path="/admin" element={<Admin />} />
                 </Route>
               </Routes>

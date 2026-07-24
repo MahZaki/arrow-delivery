@@ -7,7 +7,7 @@ import { fetchOrdersFromApi } from '../services/api';
 import {
   Search, ChevronDown, ChevronUp, Package, Truck,
   Phone, MapPin, DollarSign, Calendar, User, Box,
-  Loader2, Filter, X, ChevronLeft, ChevronRight, RefreshCw
+  Loader2, Filter, X, ChevronLeft, ChevronRight, RefreshCw, CheckCircle
 } from 'lucide-react';
 
 const Crm: React.FC = () => {
@@ -20,6 +20,7 @@ const Crm: React.FC = () => {
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
   const [carrierFilter, setCarrierFilter] = useState<'all' | 'ecotrack' | 'zrexpress'>('all');
+  const [deliveredOnly, setDeliveredOnly] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -81,6 +82,7 @@ const Crm: React.FC = () => {
     try {
       const result = await getCrmOrders(user.id, {
         carrier: carrierFilter === 'all' ? undefined : carrierFilter,
+        status: deliveredOnly ? 'Livré' : undefined,
         search: search || undefined,
         limit: pageSize,
         offset: page * pageSize,
@@ -100,7 +102,7 @@ const Crm: React.FC = () => {
 
   useEffect(() => {
     setPage(0);
-  }, [search, carrierFilter]);
+  }, [search, carrierFilter, deliveredOnly]);
 
   const totalPages = Math.ceil(total / pageSize);
 
@@ -120,8 +122,18 @@ const Crm: React.FC = () => {
             </button>
             <div className="text-sm text-gray-400">
               <span className="font-bold text-white">{total}</span> orders
-            </div>
           </div>
+          <button
+            onClick={() => setDeliveredOnly(!deliveredOnly)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-colors border ${
+              deliveredOnly
+                ? 'bg-arrow-green text-black border-arrow-green'
+                : 'bg-arrow-dark border-neutral-700 text-gray-400 hover:text-white'
+            }`}
+          >
+            <CheckCircle size={16} /> Delivered Only
+          </button>
+        </div>
         </div>
 
         {/* Filters */}

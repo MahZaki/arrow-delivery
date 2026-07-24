@@ -6,6 +6,7 @@ export async function getCrmOrders(
   profileId: string,
   options?: {
     carrier?: 'ecotrack' | 'zrexpress';
+    status?: string;
     search?: string;
     limit?: number;
     offset?: number;
@@ -18,6 +19,10 @@ export async function getCrmOrders(
 
   if (options?.carrier) {
     query = query.eq('carrier', options.carrier);
+  }
+
+  if (options?.status) {
+    query = query.eq('status', options.status);
   }
 
   if (options?.search) {

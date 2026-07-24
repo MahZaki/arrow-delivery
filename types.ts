@@ -836,6 +836,7 @@ export interface UserProfile {
   master_id?: string | null;
   markup_type?: 'flat' | 'percentage';
   markup_value?: number;
+  wa_sender_api_key?: string | null;
 }
 
 export interface ResellerParcel {
@@ -926,4 +927,31 @@ export interface CrmOrder {
   carrier_raw: Record<string, any> | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface WhatsAppCampaign {
+  id: string;
+  profile_id: string;
+  name: string;
+  message_template: string;
+  status: 'draft' | 'sending' | 'completed' | 'cancelled';
+  recipient_count: number;
+  sent_count: number;
+  failed_count: number;
+  carrier_filter: 'ecotrack' | 'zrexpress' | 'all';
+  status_filter: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WhatsAppRecipient {
+  id: string;
+  campaign_id: string;
+  crm_order_id: string | null;
+  phone: string;
+  client_name: string | null;
+  status: 'pending' | 'sent' | 'failed';
+  error: string | null;
+  sent_at: string | null;
+  created_at: string;
 }

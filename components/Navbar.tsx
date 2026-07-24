@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Menu, X, Box, MapPin, LayoutDashboard, LogIn, LogOut, DollarSign, AlertCircle, Webhook, Shield, Package } from 'lucide-react';
+import { Menu, X, Box, MapPin, LayoutDashboard, LogIn, LogOut, DollarSign, AlertCircle, Webhook, Shield, Package, MessageSquare } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const Navbar: React.FC = () => {
@@ -74,6 +74,9 @@ const Navbar: React.FC = () => {
                   <NavLink to="/crm" className={linkClasses}>
                      <Package size={18} /> CRM
                   </NavLink>
+                  <NavLink to="/whatsapp" className={linkClasses}>
+                     <MessageSquare size={18} /> WhatsApp
+                  </NavLink>
                   {user?.role === 'admin' && (
                     <NavLink to="/admin" className={linkClasses}>
                        <Shield size={18} /> Admin
@@ -137,6 +140,9 @@ const Navbar: React.FC = () => {
                 </NavLink>
                 <NavLink to="/crm" onClick={() => setIsOpen(false)} className={linkClasses}>
                    <Package size={18} /> CRM
+                </NavLink>
+                <NavLink to="/whatsapp" onClick={() => setIsOpen(false)} className={linkClasses}>
+                   <MessageSquare size={18} /> WhatsApp
                 </NavLink>
                 {user?.role === 'admin' && (
                   <NavLink to="/admin" onClick={() => setIsOpen(false)} className={linkClasses}>
