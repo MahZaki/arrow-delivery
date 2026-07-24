@@ -28,18 +28,28 @@ const Crm: React.FC = () => {
   const handleSync = async () => {
     if (!user?.id) return;
     setSyncing(true);
+    setError(null);
     try {
       let syncedCount = 0;
-      if (user.api_token) {
-        const orders = await fetchOrdersFromApi(user.api_token);
-        syncedCount += await syncEcotrackOrdersToCrm(user.id, orders);
+      if (user.carrier !== 'zrexpress' && user.api_token) {
+        try {
+          const orders = await fetchOrdersFromApi(user.api_token);
+          syncedCount += await syncEcotrackOrdersToCrm(user.id, orders);
+        } catch (e: any) {
+          if (e.message?.includes('401')) {
+            throw new Error('Ecotrack API returned 401 — your API token may be invalid. Update it in Dashboard.');
+          }
+          throw e;
+        }
       }
       if (syncedCount > 0 || user.api_token) {
         await loadOrders();
+      } else if (!user.api_token) {
+        setError('No API token set. Go to Dashboard and save your Ecotrack API token first.');
       }
       setSyncing(false);
     } catch (err: any) {
-      setError('Sync failed: ' + err.message);
+      setError(err.message);
       setSyncing(false);
     }
   };
