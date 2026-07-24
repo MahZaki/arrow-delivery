@@ -14,6 +14,7 @@ import Finance from './pages/Finance';
 import ZrCreateOrder from './pages/ZrCreateOrder';
 import Claims from './pages/Claims';
 import Webhooks from './pages/Webhooks';
+import Crm from './pages/Crm';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
 import { DataProvider } from './contexts/DataContext';
@@ -40,6 +41,7 @@ const App: React.FC = () => {
                   <Route path="/zr-create-order" element={<ZrCreateOrder />} />
                   <Route path="/claims" element={<Claims />} />
                   <Route path="/webhooks" element={<Webhooks />} />
+                  <Route path="/crm" element={<Crm />} />
                   <Route path="/admin" element={<Admin />} />
                 </Route>
               </Routes>

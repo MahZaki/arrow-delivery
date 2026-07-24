@@ -1,0 +1,135 @@
+import { supabase } from '../lib/supabase';
+import { CrmOrder, Order, ZrCredentials } from '../types';
+import { searchParcels } from './zrExpressApi';
+
+export async function getCrmOrders(
+  profileId: string,
+  options?: {
+    carrier?: 'ecotrack' | 'zrexpress';
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<{ orders: CrmOrder[]; total: number }> {
+  let query = supabase
+    .from('crm_orders')
+    .select('*', { count: 'exact' });
+
+  if (options?.carrier) {
+    query = query.eq('carrier', options.carrier);
+  }
+
+  if (options?.search) {
+    const term = `%${options.search}%`;
+    query = query.or(
+      `tracking_number.ilike.${term},client_name.ilike.${term},client_phone.ilike.${term}`
+    );
+  }
+
+  const limit = options?.limit || 50;
+  const offset = options?.offset || 0;
+
+  const { data, error, count } = await query
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) throw new Error(error.message);
+  return { orders: (data || []) as CrmOrder[], total: count || 0 };
+}
+
+export async function upsertCrmOrder(
+  order: Partial<CrmOrder> & { profile_id: string; tracking_number: string; carrier: 'ecotrack' | 'zrexpress' }
+): Promise<void> {
+  const { error } = await supabase.from('crm_orders').upsert(order, {
+    onConflict: 'profile_id, tracking_number',
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function syncEcotrackOrdersToCrm(
+  profileId: string,
+  orders: Order[]
+): Promise<number> {
+  let synced = 0;
+  for (const o of orders) {
+    try {
+      await upsertCrmOrder({
+        profile_id: profileId,
+        carrier: 'ecotrack',
+        tracking_number: o.tracking,
+        status: o.status,
+        client_name: o.client,
+        client_phone: o.phone || o.telephone || null,
+        wilaya_id: String(o.wilaya_id || ''),
+        cod_amount: Number(o.montant || 0),
+        delivery_price: Number(o.tarif_prestation || 0),
+        return_price: Number(o.tarif_retour || 0),
+        product_description: o.products || o.product || null,
+        carrier_raw: o as any,
+      });
+      synced++;
+    } catch {
+      // skip individual failures
+    }
+  }
+  return synced;
+}
+
+export async function syncZrParcelsToCrm(
+  profileId: string,
+  creds: ZrCredentials
+): Promise<number> {
+  let synced = 0;
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    const res = await searchParcels(creds, {
+      pageNumber: page,
+      pageSize: 100,
+      orderBy: ['createdAt desc'],
+    });
+
+    for (const p of res.items) {
+      try {
+        await upsertCrmOrder({
+          profile_id: profileId,
+          carrier: 'zrexpress',
+          tracking_number: p.trackingNumber,
+          status: p.state?.name || null,
+          client_name: p.customer?.name || null,
+          client_phone: p.customer?.phone?.number1 || null,
+          client_email: p.customer?.email || null,
+          city: p.deliveryAddress?.city || null,
+          district: p.deliveryAddress?.district || null,
+          street_address: p.deliveryAddress?.street || null,
+          cod_amount: p.amount || 0,
+          delivery_price: p.deliveryPrice || 0,
+          return_price: p.ReturnPrice || 0,
+          product_description: p.productsDescription || p.description || null,
+          weight: p.weight?.effectiveWeight || p.weight?.weight || null,
+          zr_parcel_id: p.id,
+          carrier_raw: p as any,
+        });
+        synced++;
+      } catch {
+        // skip individual failures
+      }
+    }
+
+    hasMore = res.hasNext;
+    page++;
+  }
+
+  return synced;
+}
+
+export async function getCrmOrderById(id: string): Promise<CrmOrder | null> {
+  const { data, error } = await supabase
+    .from('crm_orders')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (error) return null;
+  return data as CrmOrder;
+}

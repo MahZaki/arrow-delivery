@@ -901,3 +901,29 @@ export interface SubAccountBalance {
   settledAmount: number;
   masterProfit: number;
 }
+
+export interface CrmOrder {
+  id: string;
+  profile_id: string;
+  carrier: 'ecotrack' | 'zrexpress';
+  tracking_number: string;
+  status: string | null;
+  client_name: string | null;
+  client_phone: string | null;
+  client_email: string | null;
+  wilaya_id: string | null;
+  city: string | null;
+  district: string | null;
+  street_address: string | null;
+  cod_amount: number;
+  delivery_price: number;
+  return_price: number;
+  product_description: string | null;
+  quantity: number;
+  weight: number | null;
+  notes: string | null;
+  zr_parcel_id: string | null;
+  carrier_raw: Record<string, any> | null;
+  created_at: string;
+  updated_at: string;
+}

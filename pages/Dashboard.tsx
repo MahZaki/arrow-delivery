@@ -8,12 +8,13 @@ import ZrDashboardContent from '../components/ZrDashboardContent';
 import ZrSubAccountContent from '../components/ZrSubAccountContent';
 import { useAuth } from '../contexts/AuthContext';
 import AdminDashboardView from '../components/AdminDashboardView';
-import { 
+import {
     Package, Truck, CheckCircle, RefreshCw, Search, 
     MapPin, PauseCircle, CloudUpload, Archive,
     RotateCcw, Plus, ChevronDown, Home, Filter, Calendar, FilePlus, Layers, List
 } from 'lucide-react';
 import { WILAYAS } from '../constants';
+import { syncEcotrackOrdersToCrm } from '../services/crmService';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -115,6 +116,8 @@ const Dashboard: React.FC = () => {
 
       // Background: detect disappeared orders → auto-archive (non-blocking)
       autoArchiveDisappeared(liveOrders, token, userId).catch(console.warn);
+      // Background: sync live orders to CRM
+      syncEcotrackOrdersToCrm(userId, liveOrders).catch(console.warn);
 
     } catch (err: any) {
       console.error(err);
@@ -141,6 +144,8 @@ const Dashboard: React.FC = () => {
       setLastSync(new Date().toISOString());
       // Background auto-archive
       autoArchiveDisappeared(liveOrders, user.api_token, user.id).catch(console.warn);
+      // Background: sync live orders to CRM
+      syncEcotrackOrdersToCrm(user.id, liveOrders).catch(console.warn);
     } catch (err: any) {
       setError(`Refresh failed: ${err.message || 'Connection error.'}`);
     } finally {

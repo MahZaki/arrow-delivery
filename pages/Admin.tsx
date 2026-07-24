@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { UserProfile, ZrCredentials } from '../types';
 import { supabase } from '../lib/supabase';
 import { syncZrParcelsToReseller } from '../services/resellerApi';
+import { syncZrParcelsToCrm } from '../services/crmService';
 import { 
     Loader2, Lock, Users, Save, 
     AlertCircle, CheckCircle, XCircle, X, Truck, Box, RefreshCw
@@ -41,7 +42,8 @@ const Admin: React.FC = () => {
     try {
       const creds: ZrCredentials = { tenantId: user.zr_tenant_id, apiKey: user.zr_api_key };
       const result = await syncZrParcelsToReseller(user.id, creds);
-      showToast('success', `ZR sync done: ${result.inserted} new, ${result.updated} updated`);
+      const crmCount = await syncZrParcelsToCrm(user.id, creds);
+      showToast('success', `ZR sync: ${result.inserted} new, ${result.updated} updated (CRM: ${crmCount})`);
     } catch (err: any) {
       showToast('error', 'ZR sync failed: ' + err.message);
     } finally {
