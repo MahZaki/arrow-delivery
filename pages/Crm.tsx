@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { CrmOrder } from '../types';
-import { getCrmOrders, syncEcotrackOrdersToCrm, syncZrParcelsToCrm } from '../services/crmService';
+import { getCrmOrders, syncEcotrackOrdersToCrm, syncZrParcelsToCrm, getCrmStatuses } from '../services/crmService';
 import { fetchOrdersFromApi } from '../services/api';
 import {
   Search, ChevronDown, ChevronUp, Package, Truck,
@@ -20,7 +20,9 @@ const Crm: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
+  const [productSearch, setProductSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [availableStatuses, setAvailableStatuses] = useState<string[]>([]);
   const [carrierFilter, setCarrierFilter] = useState<'all' | 'ecotrack' | 'zrexpress'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -130,6 +132,7 @@ const Crm: React.FC = () => {
         carrier: carrierFilter === 'all' ? undefined : carrierFilter,
         status: statusFilter || undefined,
         search: search || undefined,
+        productSearch: productSearch || undefined,
         limit: pageSize,
         offset: page * pageSize,
       });
@@ -140,15 +143,21 @@ const Crm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, carrierFilter, search, page]);
+  }, [user?.id, carrierFilter, search, productSearch, statusFilter, user?.master_id]);
 
   useEffect(() => {
     loadOrders();
   }, [loadOrders]);
 
   useEffect(() => {
+    if (!user?.id) return;
+    const ids = [user.id, user.master_id].filter(Boolean) as string[];
+    getCrmStatuses(ids).then(setAvailableStatuses);
+  }, [user?.id, user?.master_id]);
+
+  useEffect(() => {
     setPage(0);
-  }, [search, carrierFilter, statusFilter]);
+  }, [search, productSearch, carrierFilter, statusFilter]);
 
   const totalPages = Math.ceil(total / pageSize);
 
@@ -172,14 +181,12 @@ const Crm: React.FC = () => {
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
-            className="bg-arrow-dark border border-neutral-700 rounded-xl px-4 py-2.5 text-white text-sm focus:border-arrow-green focus:outline-none"
+            className="bg-arrow-dark border border-neutral-700 rounded-xl px-4 py-2.5 text-white text-sm focus:border-arrow-green focus:outline-none max-w-[180px]"
           >
             <option value="">All Statuses</option>
-            <option value="Livré">Livré</option>
-            <option value="En cours">En cours</option>
-            <option value="Retourné">Retourné</option>
-            <option value="En attente">En attente</option>
-            <option value="Annulé">Annulé</option>
+            {availableStatuses.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
           </select>
         </div>
         </div>
@@ -197,6 +204,21 @@ const Crm: React.FC = () => {
             />
             {search && (
               <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white">
+                <X size={16} />
+              </button>
+            )}
+          </div>
+          <div className="relative min-w-[160px]">
+            <Package size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+            <input
+              type="text"
+              value={productSearch}
+              onChange={e => setProductSearch(e.target.value)}
+              placeholder="Products..."
+              className="w-full bg-arrow-dark border border-neutral-700 rounded-xl pl-10 pr-4 py-2.5 text-white focus:border-arrow-green focus:outline-none text-sm"
+            />
+            {productSearch && (
+              <button onClick={() => setProductSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white">
                 <X size={16} />
               </button>
             )}

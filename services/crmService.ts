@@ -8,6 +8,7 @@ export async function getCrmOrders(
     carrier?: 'ecotrack' | 'zrexpress';
     status?: string;
     search?: string;
+    productSearch?: string;
     limit?: number;
     offset?: number;
   }
@@ -25,6 +26,10 @@ export async function getCrmOrders(
 
   if (options?.status) {
     query = query.eq('status', options.status);
+  }
+
+  if (options?.productSearch) {
+    query = query.ilike('product_description', `%${options.productSearch}%`);
   }
 
   if (options?.search) {
@@ -135,4 +140,16 @@ export async function getCrmOrderById(id: string): Promise<CrmOrder | null> {
     .single();
   if (error) return null;
   return data as CrmOrder;
+}
+
+export async function getCrmStatuses(profileIds: string[]): Promise<string[]> {
+  if (profileIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('crm_orders')
+    .select('status')
+    .in('profile_id', profileIds)
+    .not('status', 'is', null);
+  if (error) return [];
+  const statuses = [...new Set(data.map(r => r.status as string))].filter(Boolean).sort();
+  return statuses;
 }
