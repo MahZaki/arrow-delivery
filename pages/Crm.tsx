@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { CrmOrder } from '../types';
-import { getCrmOrders, syncEcotrackOrdersToCrm } from '../services/crmService';
+import { getCrmOrders, syncEcotrackOrdersToCrm, syncZrParcelsToCrm } from '../services/crmService';
 import { fetchOrdersFromApi } from '../services/api';
 import {
   Search, ChevronDown, ChevronUp, Package, Truck,
@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 
 const Crm: React.FC = () => {
-  const { user } = useAuth();
+  const { user, resolveZrCredentials } = useAuth();
   const navigate = useNavigate();
 
   const [orders, setOrders] = useState<CrmOrder[]>([]);
@@ -31,6 +31,7 @@ const Crm: React.FC = () => {
     setError(null);
     try {
       let syncedCount = 0;
+      // Sync Ecotrack orders
       if (user.carrier !== 'zrexpress' && user.api_token) {
         try {
           const orders = await fetchOrdersFromApi(user.api_token);
@@ -42,10 +43,15 @@ const Crm: React.FC = () => {
           throw e;
         }
       }
-      if (syncedCount > 0 || user.api_token) {
+      // Sync ZR Express parcels
+      const zrCreds = await resolveZrCredentials();
+      if (zrCreds) {
+        syncedCount += await syncZrParcelsToCrm(user.id, zrCreds);
+      }
+      if (syncedCount > 0) {
         await loadOrders();
-      } else if (!user.api_token) {
-        setError('No API token set. Go to Dashboard and save your Ecotrack API token first.');
+      } else if (!user.api_token && !zrCreds) {
+        setError('No API token or ZR credentials set. Configure them in Dashboard or Admin panel.');
       }
       setSyncing(false);
     } catch (err: any) {
