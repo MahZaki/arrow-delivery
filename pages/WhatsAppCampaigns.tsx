@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { WhatsAppCampaign, CrmOrder } from '../types';
-import { getCampaigns, createCampaign, getRecipients, insertRecipients, markRecipientSent, updateCampaignStatus, interpolateTemplate } from '../services/whatsappCampaignService';
+import { getCampaigns, createCampaign, getRecipients, insertRecipients, markRecipientSent, updateCampaignStatus, updateCampaign, deleteCampaign, interpolateTemplate } from '../services/whatsappCampaignService';
 import { sendWhatsAppText, formatPhone } from '../services/whatsappService';
 import { getCrmOrders } from '../services/crmService';
 import {
@@ -27,6 +27,10 @@ const WhatsAppCampaigns: React.FC = () => {
   const [previewOrders, setPreviewOrders] = useState<CrmOrder[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [sendProgress, setSendProgress] = useState({ sent: 0, failed: 0, total: 0 });
+  const [editTarget, setEditTarget] = useState<WhatsAppCampaign | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editTemplate, setEditTemplate] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const loadCampaigns = useCallback(async () => {
     if (!user?.id) return;
@@ -86,6 +90,20 @@ const WhatsAppCampaigns: React.FC = () => {
     setName('');
     setTemplate('');
     setPreviewOrders([]);
+    loadCampaigns();
+  };
+
+  const handleEdit = async () => {
+    if (!editTarget) return;
+    await updateCampaign(editTarget.id, { name: editName, message_template: editTemplate });
+    setEditTarget(null);
+    loadCampaigns();
+  };
+
+  const handleDelete = async (id: string) => {
+    await deleteCampaign(id);
+    if (selected?.id === id) setSelected(null);
+    setDeleteConfirm(null);
     loadCampaigns();
   };
 
@@ -213,7 +231,7 @@ const WhatsAppCampaigns: React.FC = () => {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {campaigns.map(c => (
               <div key={c.id} onClick={() => selectCampaign(c)}
-                className="bg-arrow-dark border border-neutral-800 rounded-xl p-5 hover:border-arrow-green/50 cursor-pointer transition-all">
+                className="bg-arrow-dark border border-neutral-800 rounded-xl p-5 hover:border-arrow-green/50 cursor-pointer transition-all relative group">
                 <div className="flex items-center gap-3 mb-3">
                   <MessageSquare size={20} className="text-arrow-green" />
                   <h3 className="font-bold text-white">{c.name}</h3>
@@ -230,6 +248,18 @@ const WhatsAppCampaigns: React.FC = () => {
                 <div className="flex gap-4 text-xs text-gray-500">
                   <span className="text-green-400">{c.sent_count} sent</span>
                   {c.failed_count > 0 && <span className="text-red-400">{c.failed_count} failed</span>}
+                </div>
+                <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {c.status === 'draft' && (
+                    <button onClick={(e) => { e.stopPropagation(); setEditTarget(c); setEditName(c.name); setEditTemplate(c.message_template); }}
+                      className="p-1.5 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-gray-400 hover:text-white transition-colors">
+                      <FileText size={14} />
+                    </button>
+                  )}
+                  <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(c.id); }}
+                    className="p-1.5 bg-red-900/30 hover:bg-red-900/50 rounded-lg text-red-400 hover:text-red-300 transition-colors">
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
             ))}
@@ -310,6 +340,47 @@ const WhatsAppCampaigns: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Modal */}
+        {editTarget && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setEditTarget(null)}>
+            <div className="bg-arrow-dark border border-neutral-700 rounded-2xl p-6 max-w-lg w-full" onClick={e => e.stopPropagation()}>
+              <h2 className="text-xl font-bold text-white mb-4">Edit Campaign</h2>
+              <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Name"
+                className="w-full bg-black border border-neutral-700 rounded-xl px-4 py-3 mb-3 text-white focus:border-arrow-green focus:outline-none" />
+              <textarea value={editTemplate} onChange={e => setEditTemplate(e.target.value)} rows={4}
+                placeholder="Message template..."
+                className="w-full bg-black border border-neutral-700 rounded-xl px-4 py-3 mb-4 text-white focus:border-arrow-green focus:outline-none" />
+              <div className="flex gap-3">
+                <button onClick={handleEdit} disabled={!editName || !editTemplate}
+                  className="flex-1 bg-arrow-green text-black py-3 rounded-xl font-bold hover:bg-emerald-400 disabled:opacity-50 transition-colors">
+                  Save
+                </button>
+                <button onClick={() => setEditTarget(null)}
+                  className="px-6 py-3 text-gray-400 hover:text-white transition-colors">Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Confirm */}
+        {deleteConfirm && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setDeleteConfirm(null)}>
+            <div className="bg-arrow-dark border border-neutral-700 rounded-2xl p-6 max-w-sm w-full text-center" onClick={e => e.stopPropagation()}>
+              <AlertCircle size={40} className="mx-auto mb-4 text-red-400" />
+              <h2 className="text-lg font-bold text-white mb-2">Delete Campaign?</h2>
+              <p className="text-sm text-gray-400 mb-6">This action cannot be undone. All recipients will be removed.</p>
+              <div className="flex gap-3">
+                <button onClick={() => handleDelete(deleteConfirm)}
+                  className="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-500 transition-colors">
+                  Delete
+                </button>
+                <button onClick={() => setDeleteConfirm(null)}
+                  className="flex-1 bg-neutral-800 text-gray-300 py-3 rounded-xl font-bold hover:text-white transition-colors">Cancel</button>
+              </div>
             </div>
           </div>
         )}

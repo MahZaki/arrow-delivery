@@ -45,6 +45,30 @@ export async function updateCampaignStatus(
   if (error) throw new Error(error.message);
 }
 
+export async function updateCampaign(
+  campaignId: string,
+  updates: { name?: string; message_template?: string; carrier_filter?: string; status_filter?: string | null }
+): Promise<void> {
+  const { error } = await supabase
+    .from('whatsapp_campaigns')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', campaignId);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteCampaign(campaignId: string): Promise<void> {
+  const { error } = await supabase
+    .from('whatsapp_recipients')
+    .delete()
+    .eq('campaign_id', campaignId);
+  if (error) throw new Error(error.message);
+  const { error: err2 } = await supabase
+    .from('whatsapp_campaigns')
+    .delete()
+    .eq('id', campaignId);
+  if (err2) throw new Error(err2.message);
+}
+
 export async function getRecipients(campaignId: string): Promise<WhatsAppRecipient[]> {
   const { data, error } = await supabase
     .from('whatsapp_recipients')

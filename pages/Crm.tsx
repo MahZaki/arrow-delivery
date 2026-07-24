@@ -7,7 +7,7 @@ import { fetchOrdersFromApi } from '../services/api';
 import {
   Search, ChevronDown, ChevronUp, Package, Truck,
   Phone, MapPin, DollarSign, Calendar, User, Box,
-  Loader2, Filter, X, ChevronLeft, ChevronRight, RefreshCw, CheckCircle
+  Loader2, Filter, X, ChevronLeft, ChevronRight, RefreshCw, CheckCircle, Send, MessageSquare
 } from 'lucide-react';
 
 const Crm: React.FC = () => {
@@ -24,6 +24,10 @@ const Crm: React.FC = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [waModal, setWaModal] = useState<{ order: CrmOrder } | null>(null);
+  const [waText, setWaText] = useState('');
+  const [waSending, setWaSending] = useState(false);
+  const [waResult, setWaResult] = useState<string | null>(null);
   const pageSize = 50;
 
   const handleSync = async () => {
@@ -72,6 +76,22 @@ const Crm: React.FC = () => {
     } catch (err: any) {
       setError('Unexpected error: ' + err.message);
       setSyncing(false);
+    }
+  };
+
+  const handleSendWa = async () => {
+    if (!waModal || !user?.wa_sender_api_key || !waText.trim()) return;
+    setWaSending(true);
+    setWaResult(null);
+    try {
+      const { sendWhatsAppText, formatPhone } = await import('../services/whatsappService');
+      const phone = formatPhone(waModal.order.client_phone || '');
+      await sendWhatsAppText(user.wa_sender_api_key, phone, waText.trim());
+      setWaResult('Message sent successfully!');
+    } catch (e: any) {
+      setWaResult('Failed: ' + e.message);
+    } finally {
+      setWaSending(false);
     }
   };
 
@@ -262,6 +282,12 @@ const Crm: React.FC = () => {
                                   <p><span className="text-gray-500">Phone:</span> <span className="text-white">{o.client_phone || '—'}</span></p>
                                   <p><span className="text-gray-500">Email:</span> <span className="text-white">{o.client_email || '—'}</span></p>
                                 </div>
+                                {o.client_phone && (
+                                  <button onClick={(e) => { e.stopPropagation(); setWaModal({ order: o }); setWaText(`Bonjour ${o.client_name || ''}, votre colis ${o.tracking_number} est en cours de livraison.`); setWaResult(null); }}
+                                    className="mt-3 flex items-center gap-2 px-3 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 rounded-xl text-xs font-bold transition-colors border border-emerald-600/30">
+                                    <MessageSquare size={14} /> Send WhatsApp
+                                  </button>
+                                )}
                               </div>
                               <div>
                                 <h4 className="text-xs uppercase text-gray-500 font-bold mb-3 flex items-center gap-2">
@@ -324,6 +350,43 @@ const Crm: React.FC = () => {
               </div>
             )}
           </>
+        )}
+
+        {/* WhatsApp Modal */}
+        {waModal && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setWaModal(null)}>
+            <div className="bg-arrow-dark border border-neutral-700 rounded-2xl p-6 max-w-lg w-full" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-3 mb-4">
+                <MessageSquare size={20} className="text-emerald-400" />
+                <h3 className="text-lg font-bold text-white">Send WhatsApp</h3>
+              </div>
+              <p className="text-sm text-gray-400 mb-4">
+                To: <span className="text-white">{waModal.order.client_name || 'Client'}</span> — <span className="font-mono">{waModal.order.client_phone}</span>
+              </p>
+              <textarea
+                value={waText}
+                onChange={e => setWaText(e.target.value)}
+                rows={4}
+                className="w-full bg-black border border-neutral-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none mb-4"
+                placeholder="Type your message..."
+              />
+              {waResult && (
+                <p className={`text-sm mb-4 ${waResult.startsWith('Failed') ? 'text-red-400' : 'text-green-400'}`}>{waResult}</p>
+              )}
+              <div className="flex gap-3">
+                <button onClick={handleSendWa} disabled={waSending || !waText.trim() || !user?.wa_sender_api_key}
+                  className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-500 disabled:opacity-50 transition-colors">
+                  {waSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  {waSending ? 'Sending...' : 'Send'}
+                </button>
+                <button onClick={() => setWaModal(null)}
+                  className="px-6 py-3 text-gray-400 hover:text-white transition-colors">Cancel</button>
+              </div>
+              {!user?.wa_sender_api_key && (
+                <p className="text-xs text-red-400 mt-3">No WaSender API key configured. Add it in Admin page.</p>
+              )}
+            </div>
+          </div>
         )}
       </div>
     </div>
