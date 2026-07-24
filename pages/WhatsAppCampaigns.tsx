@@ -89,7 +89,7 @@ const WhatsAppCampaigns: React.FC = () => {
     if (!user?.id) return;
     setPreviewLoading(true);
     try {
-      const result = await getCrmOrders(user.id, {
+      const result = await getCrmOrders([user.id, user.master_id].filter(Boolean) as string[], {
         carrier: carrierFilter === 'all' ? undefined : carrierFilter,
         limit: 200,
       });

@@ -7,7 +7,7 @@ import { fetchOrdersFromApi } from '../services/api';
 import {
   Search, ChevronDown, ChevronUp, Package, Truck,
   Phone, MapPin, DollarSign, Calendar, User, Box,
-  Loader2, Filter, X, ChevronLeft, ChevronRight, RefreshCw, CheckCircle, Send, MessageSquare,
+  Loader2, Filter, X, ChevronLeft, ChevronRight, RefreshCw, Send, MessageSquare,
   Square, CheckSquare
 } from 'lucide-react';
 
@@ -20,8 +20,8 @@ const Crm: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('');
   const [carrierFilter, setCarrierFilter] = useState<'all' | 'ecotrack' | 'zrexpress'>('all');
-  const [deliveredOnly, setDeliveredOnly] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -126,9 +126,9 @@ const Crm: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await getCrmOrders(user.id, {
+      const result = await getCrmOrders([user.id, user.master_id].filter(Boolean) as string[], {
         carrier: carrierFilter === 'all' ? undefined : carrierFilter,
-        status: deliveredOnly ? 'Livré' : undefined,
+        status: statusFilter || undefined,
         search: search || undefined,
         limit: pageSize,
         offset: page * pageSize,
@@ -148,7 +148,7 @@ const Crm: React.FC = () => {
 
   useEffect(() => {
     setPage(0);
-  }, [search, carrierFilter, deliveredOnly]);
+  }, [search, carrierFilter, statusFilter]);
 
   const totalPages = Math.ceil(total / pageSize);
 
@@ -169,16 +169,18 @@ const Crm: React.FC = () => {
             <div className="text-sm text-gray-400">
               <span className="font-bold text-white">{total}</span> orders
           </div>
-          <button
-            onClick={() => setDeliveredOnly(!deliveredOnly)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-colors border ${
-              deliveredOnly
-                ? 'bg-arrow-green text-black border-arrow-green'
-                : 'bg-arrow-dark border-neutral-700 text-gray-400 hover:text-white'
-            }`}
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="bg-arrow-dark border border-neutral-700 rounded-xl px-4 py-2.5 text-white text-sm focus:border-arrow-green focus:outline-none"
           >
-            <CheckCircle size={16} /> Delivered Only
-          </button>
+            <option value="">All Statuses</option>
+            <option value="Livré">Livré</option>
+            <option value="En cours">En cours</option>
+            <option value="Retourné">Retourné</option>
+            <option value="En attente">En attente</option>
+            <option value="Annulé">Annulé</option>
+          </select>
         </div>
         </div>
 

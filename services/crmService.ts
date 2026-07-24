@@ -3,7 +3,7 @@ import { CrmOrder, Order, ZrCredentials } from '../types';
 import { searchParcels } from './zrExpressApi';
 
 export async function getCrmOrders(
-  profileId: string,
+  profileIds: string[],
   options?: {
     carrier?: 'ecotrack' | 'zrexpress';
     status?: string;
@@ -12,10 +12,12 @@ export async function getCrmOrders(
     offset?: number;
   }
 ): Promise<{ orders: CrmOrder[]; total: number }> {
+  if (profileIds.length === 0) return { orders: [], total: 0 };
+
   let query = supabase
     .from('crm_orders')
     .select('*', { count: 'exact' })
-    .eq('profile_id', profileId);
+    .in('profile_id', profileIds);
 
   if (options?.carrier) {
     query = query.eq('carrier', options.carrier);
@@ -28,7 +30,7 @@ export async function getCrmOrders(
   if (options?.search) {
     const term = `%${options.search}%`;
     query = query.or(
-      `tracking_number.ilike.${term},client_name.ilike.${term},client_phone.ilike.${term}`
+      `tracking_number.ilike.${term},client_name.ilike.${term},client_phone.ilike.${term},product_description.ilike.${term}`
     );
   }
 
