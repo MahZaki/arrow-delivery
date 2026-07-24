@@ -6,7 +6,7 @@ import {
   generateMultipleLabels, updateParcelAmount, updateParcelCustomer,
   deleteBulkParcels, createParcelRefund, createParcelExchange,
   createParcelModificationRequest, createParcel, getAllWilayas,
-  getCommunesByWilaya, getSupplierBalance
+  getCommunesByWilaya, getSupplierBalance, getParcelStats
 } from '../services/zrExpressApi';
 import { getAllResellerParcelsForMaster } from '../services/resellerApi';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,7 +16,8 @@ import {
   Plus, ChevronDown, Calendar, Layers, List,
   X, Printer, Edit3, Trash2, CheckSquare, Square,
   RotateCcw, ArrowLeftRight, FileEdit, Upload, FileText,
-  CheckCircle, AlertTriangle, Building2, User, Filter
+  CheckCircle, AlertTriangle, Building2, User, Filter,
+  DollarSign, Package, Truck
 } from 'lucide-react';
 
 interface ZrDashboardContentProps {
@@ -57,6 +58,9 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
   const [importProgress, setImportProgress] = useState<{ current: number; total: number; results: { tracking: string; status: string; error?: string }[] } | null>(null);
   const [importLoading, setImportLoading] = useState(false);
   const [treasuryBalance, setTreasuryBalance] = useState<number | null>(null);
+  const [parcelStats, setParcelStats] = useState<Array<{ stateId: string; stateName: string; count: number; color: string }>>([]);
+  const [todayCount, setTodayCount] = useState(0);
+  const [todayDeliveredCount, setTodayDeliveredCount] = useState(0);
   const [editParcel, setEditParcel] = useState<ZrParcel | null>(null);
   const [editAmount, setEditAmount] = useState('');
   const [editName, setEditName] = useState('');
@@ -108,6 +112,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
       clearZrCache();
       await fetchParcels(currentPage);
       fetchTreasury();
+      fetchStats();
       fetchOwners();
     } catch (err: any) {
       setError(`Refresh failed: ${err.message || 'Connection error.'}`);
@@ -123,7 +128,38 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
     } catch {}
   };
 
+  const fetchStats = async () => {
+    try {
+      const [stats, todayRes, todayDelRes] = await Promise.all([
+        getParcelStats(credentials),
+        searchParcels(credentials, {
+          pageNumber: 1, pageSize: 1,
+          orderBy: ['createdAt desc'],
+          advancedFilter: {
+            logic: 'AND',
+            filters: [{ field: 'createdAt', operator: '>=', value: new Date().toISOString().split('T')[0] + 'T00:00:00.000Z' }],
+          },
+        }),
+        searchParcels(credentials, {
+          pageNumber: 1, pageSize: 1,
+          orderBy: ['createdAt desc'],
+          advancedFilter: {
+            logic: 'AND',
+            filters: [
+              { field: 'createdAt', operator: '>=', value: new Date().toISOString().split('T')[0] + 'T00:00:00.000Z' },
+              { field: 'state.name', operator: '==', value: 'Livré' },
+            ],
+          },
+        }),
+      ]);
+      setParcelStats(stats);
+      setTodayCount(todayRes.totalCount);
+      setTodayDeliveredCount(todayDelRes.totalCount);
+    } catch {}
+  };
+
   useEffect(() => { fetchTreasury(); }, [credentials.tenantId, credentials.apiKey]);
+  useEffect(() => { fetchStats(); }, [credentials.tenantId, credentials.apiKey]);
 
   const fetchOwners = async () => {
     if (!user?.id) return;
@@ -327,6 +363,52 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
       </div>
 
       <div className="max-w-[1600px] mx-auto px-4 py-8">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
+          <div className="bg-gradient-to-br from-amber-900/20 to-neutral-900 border border-amber-600/20 rounded-xl p-4">
+            <div className="text-2xl font-bold text-white">{totalCount.toLocaleString()}</div>
+            <div className="text-xs text-amber-400/70 mt-1 flex items-center gap-1"><Layers size={12} /> Total Parcels</div>
+          </div>
+          <div className="bg-gradient-to-br from-green-900/20 to-neutral-900 border border-green-600/20 rounded-xl p-4">
+            <div className="text-2xl font-bold text-green-400">{totalAmount.toLocaleString()} DA</div>
+            <div className="text-xs text-green-400/70 mt-1 flex items-center gap-1"><DollarSign size={12} /> Total COD</div>
+          </div>
+          <div className="bg-gradient-to-br from-blue-900/20 to-neutral-900 border border-blue-600/20 rounded-xl p-4">
+            <div className="text-2xl font-bold text-blue-400">{todayCount.toLocaleString()}</div>
+            <div className="text-xs text-blue-400/70 mt-1 flex items-center gap-1"><Package size={12} /> Shipped Today</div>
+          </div>
+          <div className="bg-gradient-to-br from-emerald-900/20 to-neutral-900 border border-emerald-600/20 rounded-xl p-4">
+            <div className="text-2xl font-bold text-emerald-400">{todayDeliveredCount.toLocaleString()}</div>
+            <div className="text-xs text-emerald-400/70 mt-1 flex items-center gap-1"><CheckCircle size={12} /> Delivered Today</div>
+          </div>
+          <div className="bg-gradient-to-br from-cyan-900/20 to-neutral-900 border border-cyan-600/20 rounded-xl p-4">
+            <div className="text-2xl font-bold text-cyan-400">
+              {parcelStats.length > 0 ? parcelStats.filter(s => !['Livré', 'Annulé'].includes(s.stateName)).reduce((a, s) => a + s.count, 0).toLocaleString() : '—'}
+            </div>
+            <div className="text-xs text-cyan-400/70 mt-1 flex items-center gap-1"><Truck size={12} /> In Transit</div>
+          </div>
+          <div className="bg-gradient-to-br from-purple-900/20 to-neutral-900 border border-purple-600/20 rounded-xl p-4">
+            <div className="text-2xl font-bold text-purple-400">{treasuryBalance !== null ? treasuryBalance.toLocaleString() + ' DA' : '—'}</div>
+            <div className="text-xs text-purple-400/70 mt-1 flex items-center gap-1"><Building2 size={12} /> Treasury</div>
+          </div>
+        </div>
+
+        {/* State Breakdown */}
+        {parcelStats.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-6">
+            {parcelStats.map(s => (
+              <div
+                key={s.stateId}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-neutral-900 border border-neutral-800"
+              >
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color ? `#${s.color}` : '#6b7280' }} />
+                <span className="text-arrow-gray">{s.stateName}</span>
+                <span className="text-white font-bold">{s.count}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Controls */}
         <div className="flex flex-col md:flex-row justify-between gap-4 mb-6">
           <div className="flex gap-2">

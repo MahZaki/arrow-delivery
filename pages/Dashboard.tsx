@@ -11,7 +11,8 @@ import AdminDashboardView from '../components/AdminDashboardView';
 import {
     Package, Truck, CheckCircle, RefreshCw, Search, 
     MapPin, PauseCircle, CloudUpload, Archive,
-    RotateCcw, Plus, ChevronDown, Home, Filter, Calendar, FilePlus, Layers, List
+    RotateCcw, Plus, ChevronDown, Home, Filter, Calendar, FilePlus, Layers, List,
+    DollarSign, BarChart3, TrendingUp, Clock
 } from 'lucide-react';
 import { WILAYAS } from '../constants';
 import { syncEcotrackOrdersToCrm } from '../services/crmService';
@@ -401,6 +402,47 @@ const Dashboard: React.FC = () => {
               </div>
           </div>
       </div>
+
+      {/* Stats Cards */}
+      {orders.length > 0 && (
+        <div className="max-w-full mx-auto px-4 pt-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          <div className="bg-gradient-to-br from-arrow-dark to-neutral-900 border border-arrow-deepGreen/20 rounded-xl p-4">
+            <div className="text-2xl font-bold text-white">{orders.length.toLocaleString()}</div>
+            <div className="text-xs text-arrow-gray/70 mt-1 flex items-center gap-1"><Package size={12} /> Total Orders</div>
+          </div>
+          <div className="bg-gradient-to-br from-arrow-dark to-neutral-900 border border-green-500/20 rounded-xl p-4">
+            <div className="text-2xl font-bold text-green-400">
+              {orders.filter(o => o.status === 'livre_non_encaisse' || o.status === 'encaisse_non_paye' || o.status === 'paiements_prets' || o.status === 'paye_et_archive').length.toLocaleString()}
+            </div>
+            <div className="text-xs text-green-400/70 mt-1 flex items-center gap-1"><CheckCircle size={12} /> Delivered</div>
+          </div>
+          <div className="bg-gradient-to-br from-arrow-dark to-neutral-900 border border-blue-500/20 rounded-xl p-4">
+            <div className="text-2xl font-bold text-blue-400">
+              {orders.filter(o => o.status === 'en_livraison' || o.status === 'en_preparation' || o.status === 'vers_wilaya' || o.status === 'en_hub' || o.status === 'vers_hub').length.toLocaleString()}
+            </div>
+            <div className="text-xs text-blue-400/70 mt-1 flex items-center gap-1"><Truck size={12} /> In Transit</div>
+          </div>
+          <div className="bg-gradient-to-br from-arrow-dark to-neutral-900 border border-amber-500/20 rounded-xl p-4">
+            <div className="text-2xl font-bold text-amber-400">{counts['prete_a_expedier'] || 0}</div>
+            <div className="text-xs text-amber-400/70 mt-1 flex items-center gap-1"><Clock size={12} /> Ready to Ship</div>
+          </div>
+          <div className="bg-gradient-to-br from-arrow-dark to-neutral-900 border border-cyan-500/20 rounded-xl p-4">
+            <div className="text-2xl font-bold text-cyan-400">
+              {orders.filter(o => {
+                const today = new Date().toDateString();
+                return new Date(o.created_at).toDateString() === today;
+              }).length.toLocaleString()}
+            </div>
+            <div className="text-xs text-cyan-400/70 mt-1 flex items-center gap-1"><TrendingUp size={12} /> Today</div>
+          </div>
+          <div className="bg-gradient-to-br from-arrow-dark to-neutral-900 border border-purple-500/20 rounded-xl p-4">
+            <div className="text-2xl font-bold text-purple-400">
+              {orders.reduce((sum, o) => sum + (Number(o.montant) || 0), 0).toLocaleString()} DA
+            </div>
+            <div className="text-xs text-purple-400/70 mt-1 flex items-center gap-1"><DollarSign size={12} /> Total COD</div>
+          </div>
+        </div>
+      )}
 
       {/* Horizontal Status Bar */}
       <div className="w-full bg-neutral-900 border-b border-arrow-deepGreen/30 sticky top-[145px] z-20 shadow-md">
