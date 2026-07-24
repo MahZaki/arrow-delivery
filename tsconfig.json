@@ -30,6 +30,7 @@
   "exclude": [
     "node_modules",
     "dist",
-    "antigravity-god-mode"
+    "antigravity-god-mode",
+    "supabase"
   ]
 }
