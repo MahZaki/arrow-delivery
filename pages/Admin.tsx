@@ -101,6 +101,17 @@ const Admin: React.FC = () => {
     else showToast('error', 'Failed to update token');
   };
 
+  const handleUpdateWaSenderKey = async (userId: string, apiKey: string) => {
+    setProcessingId(`wa-${userId}`);
+    const { error } = await supabase
+      .from('profiles')
+      .update({ wa_sender_api_key: apiKey || null })
+      .eq('id', userId);
+    setProcessingId(null);
+    if (!error) { showToast('success', 'WaSender key updated'); loadUsers(); }
+    else showToast('error', 'Failed to update WaSender key');
+  };
+
   // Security Check
   if (user?.role !== 'admin') {
     return (
@@ -171,7 +182,7 @@ const Admin: React.FC = () => {
                   <th className="px-4 py-3">API Token</th>
                   <th className="px-4 py-3">ZR Tenant ID</th>
                   <th className="px-4 py-3">ZR API Key</th>
-                  <th className="px-4 py-3">Actions</th>
+                  <th className="px-4 py-3">WaSender Key</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-arrow-deepGreen/30">
@@ -222,40 +233,74 @@ const Admin: React.FC = () => {
                       </div>
                     </td>
                     <td className="p-4">
-                      <input 
-                        type="text" 
-                        defaultValue={u.zr_tenant_id || ''} 
-                        placeholder="—"
-                        id={`zr-tenant-${u.id}`}
-                        className="bg-black border border-neutral-700 rounded px-3 py-2 text-white w-full focus:border-amber-500 focus:outline-none font-mono text-xs"
-                      />
+                      <div className="flex gap-2 items-center">
+                        <input 
+                          type="text" 
+                          defaultValue={u.zr_tenant_id || ''} 
+                          placeholder="—"
+                          id={`zr-tenant-${u.id}`}
+                          className="bg-black border border-neutral-700 rounded px-3 py-2 text-white w-full focus:border-amber-500 focus:outline-none font-mono text-xs"
+                        />
+                        <button 
+                          onClick={() => {
+                            const tenantInput = document.getElementById(`zr-tenant-${u.id}`) as HTMLInputElement;
+                            const keyInput = document.getElementById(`zr-key-${u.id}`) as HTMLInputElement;
+                            handleUpdateZrCredentials(u.id, tenantInput.value, keyInput.value);
+                          }}
+                          disabled={processingId === `zr-${u.id}`}
+                          className="text-amber-400 hover:text-amber-300 disabled:opacity-50 shrink-0"
+                        >
+                          {processingId === `zr-${u.id}` ? <Loader2 size={16} className="animate-spin"/> : <Save size={16} />}
+                        </button>
+                      </div>
                     </td>
                     <td className="p-4">
-                      <input 
-                        type="text" 
-                        defaultValue={u.zr_api_key || ''} 
-                        placeholder="—"
-                        id={`zr-key-${u.id}`}
-                        className="bg-black border border-neutral-700 rounded px-3 py-2 text-white w-full focus:border-amber-500 focus:outline-none font-mono text-xs"
-                      />
+                      <div className="flex gap-2 items-center">
+                        <input 
+                          type="text" 
+                          defaultValue={u.zr_api_key || ''} 
+                          placeholder="—"
+                          id={`zr-key-${u.id}`}
+                          className="bg-black border border-neutral-700 rounded px-3 py-2 text-white w-full focus:border-amber-500 focus:outline-none font-mono text-xs"
+                        />
+                        <button 
+                          onClick={() => {
+                            const keyInput = document.getElementById(`zr-key-${u.id}`) as HTMLInputElement;
+                            const tenantInput = document.getElementById(`zr-tenant-${u.id}`) as HTMLInputElement;
+                            handleUpdateZrCredentials(u.id, tenantInput.value, keyInput.value);
+                          }}
+                          disabled={processingId === `zr-${u.id}`}
+                          className="text-amber-400 hover:text-amber-300 disabled:opacity-50 shrink-0"
+                        >
+                          {processingId === `zr-${u.id}` ? <Loader2 size={16} className="animate-spin"/> : <Save size={16} />}
+                        </button>
+                      </div>
                     </td>
                     <td className="p-4">
-                      <button 
-                        onClick={() => {
-                          const tenantInput = document.getElementById(`zr-tenant-${u.id}`) as HTMLInputElement;
-                          const keyInput = document.getElementById(`zr-key-${u.id}`) as HTMLInputElement;
-                          handleUpdateZrCredentials(u.id, tenantInput.value, keyInput.value);
-                        }}
-                        disabled={processingId === `zr-${u.id}`}
-                        className="text-amber-400 hover:text-amber-300 disabled:opacity-50"
-                      >
-                        {processingId === `zr-${u.id}` ? <Loader2 size={16} className="animate-spin"/> : <Save size={16} />}
-                      </button>
+                      <div className="flex gap-2 items-center">
+                        <input 
+                          type="text" 
+                          defaultValue={u.wa_sender_api_key || ''} 
+                          placeholder="—"
+                          id={`wa-key-${u.id}`}
+                          className="bg-black border border-neutral-700 rounded px-3 py-2 text-white w-full focus:border-emerald-500 focus:outline-none font-mono text-xs"
+                        />
+                        <button 
+                          onClick={() => {
+                            const input = document.getElementById(`wa-key-${u.id}`) as HTMLInputElement;
+                            handleUpdateWaSenderKey(u.id, input.value);
+                          }}
+                          disabled={processingId === `wa-${u.id}`}
+                          className="text-emerald-400 hover:text-emerald-300 disabled:opacity-50 shrink-0"
+                        >
+                          {processingId === `wa-${u.id}` ? <Loader2 size={16} className="animate-spin"/> : <Save size={16} />}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
                 {allUsers.length === 0 && (
-                  <tr><td colSpan={7} className="p-8 text-center text-gray-500">No users found.</td></tr>
+                  <tr><td colSpan={8} className="p-8 text-center text-gray-500">No users found.</td></tr>
                 )}
               </tbody>
             </table>
