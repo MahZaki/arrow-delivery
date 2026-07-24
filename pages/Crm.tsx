@@ -2,11 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { CrmOrder } from '../types';
-import { getCrmOrders } from '../services/crmService';
+import { getCrmOrders, syncEcotrackOrdersToCrm } from '../services/crmService';
+import { fetchOrdersFromApi } from '../services/api';
 import {
   Search, ChevronDown, ChevronUp, Package, Truck,
   Phone, MapPin, DollarSign, Calendar, User, Box,
-  Loader2, Filter, X, ChevronLeft, ChevronRight
+  Loader2, Filter, X, ChevronLeft, ChevronRight, RefreshCw
 } from 'lucide-react';
 
 const Crm: React.FC = () => {
@@ -21,7 +22,27 @@ const Crm: React.FC = () => {
   const [carrierFilter, setCarrierFilter] = useState<'all' | 'ecotrack' | 'zrexpress'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const pageSize = 50;
+
+  const handleSync = async () => {
+    if (!user?.id) return;
+    setSyncing(true);
+    try {
+      let syncedCount = 0;
+      if (user.api_token) {
+        const orders = await fetchOrdersFromApi(user.api_token);
+        syncedCount += await syncEcotrackOrdersToCrm(user.id, orders);
+      }
+      if (syncedCount > 0 || user.api_token) {
+        await loadOrders();
+      }
+      setSyncing(false);
+    } catch (err: any) {
+      setError('Sync failed: ' + err.message);
+      setSyncing(false);
+    }
+  };
 
   const loadOrders = useCallback(async () => {
     if (!user?.id) return;
@@ -61,8 +82,15 @@ const Crm: React.FC = () => {
           <h1 className="text-3xl font-bold text-white flex items-center gap-3">
             <Package size={28} className="text-arrow-green" /> CRM Orders
           </h1>
-          <div className="flex items-center gap-2 text-sm text-gray-400">
-            <span className="font-bold text-white">{total}</span> total orders
+          <div className="flex items-center gap-3">
+            <button onClick={handleSync} disabled={syncing}
+              className="flex items-center gap-2 px-4 py-2 bg-arrow-green/20 hover:bg-arrow-green/30 text-arrow-green rounded-xl transition-colors disabled:opacity-50 text-sm font-bold border border-arrow-green/30">
+              {syncing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+              {syncing ? 'Syncing...' : 'Sync Now'}
+            </button>
+            <div className="text-sm text-gray-400">
+              <span className="font-bold text-white">{total}</span> orders
+            </div>
           </div>
         </div>
 

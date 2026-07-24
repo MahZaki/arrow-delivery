@@ -13,7 +13,8 @@ export async function getCrmOrders(
 ): Promise<{ orders: CrmOrder[]; total: number }> {
   let query = supabase
     .from('crm_orders')
-    .select('*', { count: 'exact' });
+    .select('*', { count: 'exact' })
+    .eq('profile_id', profileId);
 
   if (options?.carrier) {
     query = query.eq('carrier', options.carrier);
@@ -40,7 +41,10 @@ export async function getCrmOrders(
 export async function upsertCrmOrder(
   order: Partial<CrmOrder> & { profile_id: string; tracking_number: string; carrier: 'ecotrack' | 'zrexpress' }
 ): Promise<void> {
-  const { error } = await supabase.from('crm_orders').upsert(order, {
+  const { error } = await supabase.from('crm_orders').upsert({
+    ...order,
+    updated_at: new Date().toISOString(),
+  }, {
     onConflict: 'profile_id, tracking_number',
   });
   if (error) throw new Error(error.message);
@@ -52,25 +56,21 @@ export async function syncEcotrackOrdersToCrm(
 ): Promise<number> {
   let synced = 0;
   for (const o of orders) {
-    try {
-      await upsertCrmOrder({
-        profile_id: profileId,
-        carrier: 'ecotrack',
-        tracking_number: o.tracking,
-        status: o.status,
-        client_name: o.client,
-        client_phone: o.phone || o.telephone || null,
-        wilaya_id: String(o.wilaya_id || ''),
-        cod_amount: Number(o.montant || 0),
-        delivery_price: Number(o.tarif_prestation || 0),
-        return_price: Number(o.tarif_retour || 0),
-        product_description: o.products || o.product || null,
-        carrier_raw: o as any,
-      });
-      synced++;
-    } catch {
-      // skip individual failures
-    }
+    await upsertCrmOrder({
+      profile_id: profileId,
+      carrier: 'ecotrack',
+      tracking_number: o.tracking,
+      status: o.status,
+      client_name: o.client,
+      client_phone: o.phone || o.telephone || null,
+      wilaya_id: String(o.wilaya_id || ''),
+      cod_amount: Number(o.montant || 0),
+      delivery_price: Number(o.tarif_prestation || 0),
+      return_price: Number(o.tarif_retour || 0),
+      product_description: o.products || o.product || null,
+      carrier_raw: o as any,
+    });
+    synced++;
   }
   return synced;
 }
@@ -91,30 +91,26 @@ export async function syncZrParcelsToCrm(
     });
 
     for (const p of res.items) {
-      try {
-        await upsertCrmOrder({
-          profile_id: profileId,
-          carrier: 'zrexpress',
-          tracking_number: p.trackingNumber,
-          status: p.state?.name || null,
-          client_name: p.customer?.name || null,
-          client_phone: p.customer?.phone?.number1 || null,
-          client_email: p.customer?.email || null,
-          city: p.deliveryAddress?.city || null,
-          district: p.deliveryAddress?.district || null,
-          street_address: p.deliveryAddress?.street || null,
-          cod_amount: p.amount || 0,
-          delivery_price: p.deliveryPrice || 0,
-          return_price: p.ReturnPrice || 0,
-          product_description: p.productsDescription || p.description || null,
-          weight: p.weight?.effectiveWeight || p.weight?.weight || null,
-          zr_parcel_id: p.id,
-          carrier_raw: p as any,
-        });
-        synced++;
-      } catch {
-        // skip individual failures
-      }
+      await upsertCrmOrder({
+        profile_id: profileId,
+        carrier: 'zrexpress',
+        tracking_number: p.trackingNumber,
+        status: p.state?.name || null,
+        client_name: p.customer?.name || null,
+        client_phone: p.customer?.phone?.number1 || null,
+        client_email: p.customer?.email || null,
+        city: p.deliveryAddress?.city || null,
+        district: p.deliveryAddress?.district || null,
+        street_address: p.deliveryAddress?.street || null,
+        cod_amount: p.amount || 0,
+        delivery_price: p.deliveryPrice || 0,
+        return_price: p.ReturnPrice || 0,
+        product_description: p.productsDescription || p.description || null,
+        weight: p.weight?.effectiveWeight || p.weight?.weight || null,
+        zr_parcel_id: p.id,
+        carrier_raw: p as any,
+      });
+      synced++;
     }
 
     hasMore = res.hasNext;
