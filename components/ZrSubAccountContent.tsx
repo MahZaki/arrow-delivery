@@ -10,7 +10,7 @@ import {
   Search, Plus, Layers,
   Printer, CheckSquare, Square, X,
   RotateCcw, ArrowLeftRight, FileEdit, Loader2,
-  Package, Truck, CheckCircle, DollarSign, Clock, Filter
+  Package, Truck, CheckCircle, DollarSign, Clock, Filter, Eye, EyeOff
 } from 'lucide-react';
 
 interface ZrSubAccountContentProps {
@@ -50,6 +50,7 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
 
   // Statuses for filter
   const [statuses, setStatuses] = useState<string[]>([]);
+  const [showOnlyMine, setShowOnlyMine] = useState(true);
 
   const openActionModal = async (order: CrmOrder, type: 'refund' | 'exchange' | 'modify') => {
     if (!zrCredentials || !order.zr_parcel_id) return;
@@ -68,7 +69,7 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
     setFetchingParcel(false);
   };
 
-  const profileIds = useMemo(() => masterId ? [profileId, masterId] : [profileId], [profileId, masterId]);
+  const profileIds = useMemo(() => showOnlyMine ? [profileId] : (masterId ? [profileId, masterId] : [profileId]), [profileId, masterId, showOnlyMine]);
 
   const fetchOrders = async (page = 1) => {
     setLoading(true);
@@ -111,7 +112,7 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
   useEffect(() => {
     setCurrentPage(1);
     fetchOrders(1);
-  }, [search, statusFilter]);
+  }, [search, statusFilter, showOnlyMine]);
 
   // Sub-accounts don't sync — master handles that. They see master's orders via profileIds query.
 
@@ -177,6 +178,19 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
           </h1>
           <div className="flex items-center gap-4">
             <span className="text-xs text-gray-500">{totalCount} orders</span>
+            {masterId && (
+              <button
+                onClick={() => setShowOnlyMine(v => !v)}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-all ${
+                  showOnlyMine
+                    ? 'bg-amber-600/20 border-amber-600/40 text-amber-300'
+                    : 'bg-neutral-800 border-neutral-700 text-gray-400 hover:text-white'
+                }`}
+              >
+                {showOnlyMine ? <EyeOff size={14} /> : <Eye size={14} />}
+                {showOnlyMine ? 'My Orders Only' : 'All Orders'}
+              </button>
+            )}
             <span className="text-xs text-arrow-gray/60 italic">Orders synced by master account</span>
           </div>
         </div>
