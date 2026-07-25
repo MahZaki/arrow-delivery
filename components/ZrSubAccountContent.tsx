@@ -336,7 +336,7 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
                 ) : (
                   <tr>
                     <td colSpan={8} className="p-12 text-center text-gray-500">
-                      {loading ? 'Loading...' : 'No orders found. Click "Sync Orders" to fetch from ZR Express.'}
+                      {loading ? 'Loading...' : 'No orders found. Ask your master account to sync orders from ZR Express.'}
                     </td>
                   </tr>
                 )}

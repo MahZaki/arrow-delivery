@@ -56,13 +56,17 @@ const Crm: React.FC = () => {
         }
       }
 
-      // Sync ZR Express parcels
+      // Sync ZR Express parcels (only for master accounts)
       const zrCreds = await resolveZrCredentials();
       if (zrCreds) {
-        try {
-          syncedCount += await syncZrParcelsToCrm(user.id, zrCreds);
-        } catch (e: any) {
-          warnings.push('ZR sync failed: ' + e.message);
+        if (user.master_id) {
+          warnings.push('ZR sync skipped — only the master account can sync parcels');
+        } else {
+          try {
+            syncedCount += await syncZrParcelsToCrm(user.id, zrCreds);
+          } catch (e: any) {
+            warnings.push('ZR sync failed: ' + e.message);
+          }
         }
       }
 

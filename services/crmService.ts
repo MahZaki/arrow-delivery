@@ -89,13 +89,14 @@ export async function syncEcotrackOrdersToCrm(
 
 export async function syncZrParcelsToCrm(
   profileId: string,
-  creds: ZrCredentials
+  creds: ZrCredentials,
+  maxPages = 10
 ): Promise<number> {
   let synced = 0;
   let page = 1;
   let hasMore = true;
 
-  while (hasMore) {
+  while (hasMore && page <= maxPages) {
     const res = await searchParcels(creds, {
       pageNumber: page,
       pageSize: 100,
