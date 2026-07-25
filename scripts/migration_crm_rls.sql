@@ -25,6 +25,7 @@ CREATE POLICY "Users can insert their own CRM orders"
   WITH CHECK (
     auth.uid() = profile_id
     OR profile_id IN (SELECT id FROM profiles WHERE master_id = auth.uid())
+    OR auth.uid() IN (SELECT master_id FROM profiles WHERE id = profile_id)
   );
 
 CREATE POLICY "Users can update their own CRM orders"
@@ -32,4 +33,5 @@ CREATE POLICY "Users can update their own CRM orders"
   USING (
     auth.uid() = profile_id
     OR profile_id IN (SELECT id FROM profiles WHERE master_id = auth.uid())
+    OR auth.uid() IN (SELECT master_id FROM profiles WHERE id = profile_id)
   );

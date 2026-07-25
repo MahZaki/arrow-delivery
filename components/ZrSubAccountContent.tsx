@@ -4,10 +4,10 @@ import { ResellerParcel, ZrCredentials, ZrParcel, CrmOrder } from '../types';
 import { getCrmOrders } from '../services/crmService';
 import { getMyParcels } from '../services/resellerApi';
 import { generateIndividualLabels, generateMultipleLabels, getParcelByTracking, createParcelRefund, createParcelExchange, createParcelModificationRequest } from '../services/zrExpressApi';
-import { syncZrParcelsToCrm } from '../services/crmService';
+
 import LoadingSpinner from './LoadingSpinner';
 import {
-  RefreshCw, Search, Plus, Layers,
+  Search, Plus, Layers,
   Printer, CheckSquare, Square, X,
   RotateCcw, ArrowLeftRight, FileEdit, Loader2,
   Package, Truck, CheckCircle, DollarSign, Clock, Filter
@@ -24,7 +24,7 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
   const [orders, setOrders] = useState<CrmOrder[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
+  const isSubAccount = !!masterId;
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -113,21 +113,7 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
     fetchOrders(1);
   }, [search, statusFilter]);
 
-  const handleSync = async () => {
-    const targetId = masterId || profileId;
-    if (!zrCredentials) return;
-    setSyncing(true);
-    setError(null);
-    try {
-      await syncZrParcelsToCrm(targetId, zrCredentials);
-      await fetchOrders(currentPage);
-      setError('Sync complete');
-      setTimeout(() => setError(null), 3000);
-    } catch (err: any) {
-      setError('Sync failed: ' + (err?.message || 'unknown error'));
-    }
-    setSyncing(false);
-  };
+  // Sub-accounts don't sync — master handles that. They see master's orders via profileIds query.
 
   const totalPages = Math.ceil(totalCount / pageSize);
 
@@ -191,14 +177,7 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
           </h1>
           <div className="flex items-center gap-4">
             <span className="text-xs text-gray-500">{totalCount} orders</span>
-            <button
-              onClick={handleSync}
-              disabled={syncing || !zrCredentials}
-              className="bg-neutral-900 hover:bg-neutral-800 text-white border border-amber-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all disabled:opacity-50"
-            >
-              <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
-              {syncing ? 'Syncing...' : 'Sync Orders'}
-            </button>
+            <span className="text-xs text-arrow-gray/60 italic">Orders synced by master account</span>
           </div>
         </div>
       </div>
