@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ZrCredentials, ZrTerritory, ZrCreateParcelRequest } from '../types';
 import { createParcel, getParcelById, getAllRates, getAllWilayas, getCommunesByWilaya, searchWorkflows, updateParcelState, searchHubs, generateIndividualLabels } from '../services/zrExpressApi';
 import { saveParcel } from '../services/resellerApi';
+import { upsertCrmOrder } from '../services/crmService';
 import { addTransaction } from '../services/transactionApi';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -192,6 +193,22 @@ const ZrCreateOrder: React.FC = () => {
           deliveryRate || 0, myDeliveryPrice || 0,
           parcelDetails.state.name
         );
+        await upsertCrmOrder({
+          profile_id: user.id,
+          carrier: 'zrexpress',
+          tracking_number: parcelDetails.trackingNumber,
+          status: parcelDetails.state.name,
+          client_name: customerName,
+          client_phone: customerPhone,
+          city: communes.find(c => c.id === selectedCommune)?.name || null,
+          district: wilayas.find(w => w.id === selectedWilaya)?.name || null,
+          street_address: street || null,
+          cod_amount: parseFloat(amount) || 0,
+          delivery_price: deliveryRate || 0,
+          product_description: description,
+          weight: weight ? parseFloat(weight) : null,
+          zr_parcel_id: result.id,
+        });
         if (user.master_id && myDeliveryPrice) {
           await addTransaction(user.id, 'delivery_fee', -myDeliveryPrice, savedParcelId, parcelDetails.trackingNumber);
         }
