@@ -171,11 +171,11 @@ const Crm: React.FC = () => {
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
           <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <Package size={28} className="text-arrow-green" /> CRM Orders
+            <Package size={28} className="text-amber-400" /> CRM Orders
           </h1>
           <div className="flex items-center gap-3">
             <button onClick={handleSync} disabled={syncing}
-              className="flex items-center gap-2 px-4 py-2 bg-arrow-green/20 hover:bg-arrow-green/30 text-arrow-green rounded-xl transition-colors disabled:opacity-50 text-sm font-bold border border-arrow-green/30">
+              className="flex items-center gap-2 px-4 py-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 rounded-xl transition-colors disabled:opacity-50 text-sm font-bold border border-amber-600/30">
               {syncing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
               {syncing ? 'Syncing...' : 'Sync Now'}
             </button>
@@ -266,7 +266,7 @@ const Crm: React.FC = () => {
         {/* Loading */}
         {loading && (
           <div className="flex justify-center py-20">
-            <Loader2 size={40} className="animate-spin text-arrow-green" />
+            <Loader2 size={40} className="animate-spin text-amber-400" />
           </div>
         )}
 

@@ -77,7 +77,7 @@ const Balance: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-arrow-light flex items-center gap-3">
-            <Wallet className="text-arrow-green" size={28} />
+            <Wallet className="text-amber-400" size={28} />
             ZR Balance
           </h1>
           <p className="text-arrow-gray text-sm mt-1">Treasury overview & payment history</p>
@@ -85,7 +85,7 @@ const Balance: React.FC = () => {
         <button
           onClick={loadData}
           disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-arrow-deepGreen/30 text-arrow-green hover:bg-arrow-deepGreen/10 transition-all text-sm disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-amber-600/30 text-amber-400 hover:bg-amber-600/10 transition-all text-sm disabled:opacity-50"
         >
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           Refresh
@@ -99,10 +99,10 @@ const Balance: React.FC = () => {
       )}
 
       {!creds && !loading && (
-        <div className="bg-arrow-dark/50 border border-arrow-deepGreen/20 rounded-lg p-8 text-center">
-          <Building2 size={40} className="mx-auto mb-3 text-arrow-gray/50" />
-          <p className="text-arrow-gray">ZR Express credentials not configured.</p>
-          <p className="text-arrow-gray/60 text-sm mt-1">Set your Tenant ID & API Key in Admin &gt; Users.</p>
+        <div className="bg-neutral-900/50 border border-neutral-800/60 rounded-lg p-8 text-center">
+          <Building2 size={40} className="mx-auto mb-3 text-gray-600" />
+          <p className="text-gray-400">ZR Express credentials not configured.</p>
+          <p className="text-gray-500 text-sm mt-1">Set your Tenant ID & API Key in Admin &gt; Users.</p>
         </div>
       )}
 
@@ -112,17 +112,17 @@ const Balance: React.FC = () => {
         <>
           {/* Balance Card */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-gradient-to-br from-arrow-dark to-arrow-black border border-arrow-deepGreen/20 rounded-xl p-6">
-              <div className="flex items-center gap-2 text-arrow-gray text-sm mb-2">
-                <DollarSign size={16} className="text-arrow-green" />
+            <div className="bg-gradient-to-br from-neutral-900 to-neutral-950 border border-neutral-800 rounded-xl p-6">
+              <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
+                <DollarSign size={16} className="text-amber-400" />
                 Available Balance
               </div>
-              <div className="text-3xl font-bold text-arrow-light">
+              <div className="text-3xl font-bold text-white">
                 {balance ? formatCurrency(balance.balance) : '—'}
               </div>
             </div>
-            <div className="bg-gradient-to-br from-arrow-dark to-arrow-black border border-arrow-deepGreen/20 rounded-xl p-6">
-              <div className="flex items-center gap-2 text-arrow-gray text-sm mb-2">
+            <div className="bg-gradient-to-br from-neutral-900 to-neutral-950 border border-neutral-800 rounded-xl p-6">
+              <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
                 <Clock size={16} className="text-yellow-400" />
                 Pending Amount
               </div>
@@ -130,8 +130,8 @@ const Balance: React.FC = () => {
                 {balance?.pendingAmount != null ? formatCurrency(balance.pendingAmount) : '—'}
               </div>
             </div>
-            <div className="bg-gradient-to-br from-arrow-dark to-arrow-black border border-arrow-deepGreen/20 rounded-xl p-6">
-              <div className="flex items-center gap-2 text-arrow-gray text-sm mb-2">
+            <div className="bg-gradient-to-br from-neutral-900 to-neutral-950 border border-neutral-800 rounded-xl p-6">
+              <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
                 <TrendingUp size={16} className="text-blue-400" />
                 Total Collected
               </div>
@@ -142,10 +142,10 @@ const Balance: React.FC = () => {
           </div>
 
           {/* Payments Table */}
-          <div className="bg-arrow-dark/50 border border-arrow-deepGreen/20 rounded-xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-arrow-deepGreen/20 flex items-center gap-2">
-              <FileText size={18} className="text-arrow-green" />
-              <h2 className="font-semibold text-arrow-light">Payment History</h2>
+          <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-neutral-800 flex items-center gap-2">
+              <FileText size={18} className="text-amber-400" />
+              <h2 className="font-semibold text-white">Payment History</h2>
               <span className="text-xs text-arrow-gray/50 ml-auto">{payments.length} payments</span>
             </div>
             {payments.length === 0 ? (
@@ -154,7 +154,7 @@ const Balance: React.FC = () => {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-arrow-deepGreen/10 text-arrow-gray/70 uppercase text-[11px] tracking-wider">
+                    <tr className="border-b border-neutral-800 text-gray-400 uppercase text-[11px] tracking-wider">
                       <th className="text-left px-6 py-3 font-medium">Reference</th>
                       <th className="text-left px-6 py-3 font-medium">Date</th>
                       <th className="text-right px-6 py-3 font-medium">Amount</th>
@@ -162,25 +162,25 @@ const Balance: React.FC = () => {
                       <th className="text-right px-6 py-3 font-medium">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-arrow-deepGreen/10">
+                  <tbody className="divide-y divide-neutral-800">
                     {payments.map((p) => (
-                      <tr key={p.id} className="hover:bg-arrow-dark/40 transition-colors">
-                        <td className="px-6 py-4 font-mono text-xs text-arrow-light">
+                      <tr key={p.id} className="hover:bg-neutral-800/40 transition-colors">
+                        <td className="px-6 py-4 font-mono text-xs text-white">
                           {p.referenceId || '—'}
                         </td>
-                        <td className="px-6 py-4 text-arrow-gray">
+                        <td className="px-6 py-4 text-gray-400">
                           {formatDate(p.createdAt)}
                         </td>
-                        <td className="px-6 py-4 text-right font-medium text-arrow-light">
+                        <td className="px-6 py-4 text-right font-medium text-white">
                           {formatCurrency(p.amount)}
                         </td>
                         <td className="px-6 py-4 text-center">
                           <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium ${
                             p.status === 'Accepted'
-                              ? 'bg-arrow-green/10 text-arrow-green'
+                              ? 'bg-green-500/10 text-green-400'
                               : p.status === 'Pending'
                               ? 'bg-yellow-400/10 text-yellow-400'
-                              : 'bg-arrow-gray/10 text-arrow-gray'
+                              : 'bg-gray-500/10 text-gray-400'
                           }`}>
                             {p.status === 'Accepted' ? <CheckCircle size={12} /> : <Clock size={12} />}
                             {p.status || 'Unknown'}
@@ -191,7 +191,7 @@ const Balance: React.FC = () => {
                             <button
                               onClick={() => handleAccept(p.id)}
                               disabled={acceptingId === p.id}
-                              className="flex items-center gap-1.5 ml-auto px-3 py-1.5 rounded-lg bg-arrow-green/10 text-arrow-green hover:bg-arrow-green/20 transition-all text-xs disabled:opacity-50"
+                              className="flex items-center gap-1.5 ml-auto px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all text-xs disabled:opacity-50"
                             >
                               {acceptingId === p.id ? (
                                 <Loader size={12} className="animate-spin" />

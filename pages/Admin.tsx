@@ -151,10 +151,10 @@ const Admin: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-2 mb-8 border-b border-arrow-deepGreen">
+      <div className="flex flex-wrap gap-2 mb-8 border-b border-neutral-800">
         <button
           onClick={() => setActiveTab('users')}
-          className={`px-6 py-3 font-bold flex items-center gap-2 transition-colors ${activeTab === 'users' ? 'text-arrow-green border-b-2 border-arrow-green' : 'text-gray-400 hover:text-white'}`}
+          className={`px-6 py-3 font-bold flex items-center gap-2 transition-colors ${activeTab === 'users' ? 'text-amber-400 border-b-2 border-amber-400' : 'text-gray-400 hover:text-white'}`}
         >
           <Users size={20} /> Users
         </button>
@@ -170,11 +170,11 @@ const Admin: React.FC = () => {
 
       {/* Users Tab */}
       {activeTab === 'users' && (
-        <div className="animate-fade-in bg-arrow-dark border border-arrow-deepGreen rounded-xl overflow-hidden shadow-xl p-6">
+        <div className="animate-fade-in bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden shadow-xl p-6">
           <h2 className="text-xl font-bold text-white mb-4">All Users</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
-              <thead className="bg-neutral-950 text-arrow-green">
+              <thead className="bg-neutral-950 text-amber-400">
                 <tr>
                   <th className="px-4 py-3">Email</th>
                   <th className="px-4 py-3">Role</th>
@@ -185,7 +185,7 @@ const Admin: React.FC = () => {
                   <th className="px-4 py-3">WaSender Key</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-arrow-deepGreen/30">
+              <tbody className="divide-y divide-neutral-800">
                 {allUsers.map((u) => (
                   <tr key={u.id} className="hover:bg-neutral-900">
                     <td className="p-4 text-white">{u.email}</td>

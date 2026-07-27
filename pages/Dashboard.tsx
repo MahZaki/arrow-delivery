@@ -335,7 +335,7 @@ const Dashboard: React.FC = () => {
   // Token Prompt (Ecotrack mode)
   if (!user?.api_token) {
       return (
-          <div className="max-w-md mx-auto mt-20 p-8 bg-arrow-dark border border-arrow-deepGreen rounded-2xl shadow-xl text-center">
+           <div className="max-w-md mx-auto mt-20 p-8 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-xl text-center">
               <h2 className="text-2xl font-bold text-white mb-4">Connect Account</h2>
               <p className="text-gray-400 mb-6">Enter your API Token from the settings page to sync your orders.</p>
               <input 
@@ -343,12 +343,12 @@ const Dashboard: React.FC = () => {
                   value={newToken}
                   onChange={(e) => setNewToken(e.target.value)}
                   placeholder="Paste API Token here"
-                  className="w-full bg-black border border-neutral-700 p-3 rounded-xl text-white mb-4 focus:border-arrow-green focus:outline-none"
+                  className="w-full bg-black border border-neutral-700 p-3 rounded-xl text-white mb-4 focus:border-amber-500 focus:outline-none"
               />
               <button 
                   onClick={handleSaveToken} 
                   disabled={isSavingToken}
-                  className="w-full bg-arrow-green text-black font-bold py-3 rounded-xl hover:bg-emerald-400 transition-colors disabled:opacity-50"
+                  className="w-full bg-amber-600 text-black font-bold py-3 rounded-xl hover:bg-amber-500 transition-colors disabled:opacity-50"
               >
                   {isSavingToken ? 'Saving...' : 'Connect'}
               </button>
@@ -374,11 +374,11 @@ const Dashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-arrow-black pb-20">
       {/* Top Header */}
-      <div className="bg-arrow-dark/50 border-b border-arrow-deepGreen/30 sticky top-[80px] z-30 backdrop-blur-md">
+      <div className="bg-neutral-900/50 border-b border-neutral-800 sticky top-[80px] z-30 backdrop-blur-md">
           <div className="max-w-full mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
               <div className="flex items-center gap-4">
                   <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                      <Layers size={24} className="text-arrow-green" /> My Dashboard
+                       <Layers size={24} className="text-amber-400" /> My Dashboard
                   </h1>
               </div>
               <div className="flex items-center gap-4">
@@ -394,7 +394,7 @@ const Dashboard: React.FC = () => {
                   <button 
                       onClick={handleForceUpdate} 
                       disabled={syncing}
-                      className="bg-neutral-900 hover:bg-neutral-800 text-white border border-arrow-deepGreen px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all disabled:opacity-50"
+                       className="bg-neutral-900 hover:bg-neutral-800 text-white border border-amber-600/40 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all disabled:opacity-50"
                   >
                       <RefreshCw size={16} className={syncing ? "animate-spin" : ""} />
                       {syncing ? 'Syncing...' : 'Sync from Network'}
@@ -445,7 +445,7 @@ const Dashboard: React.FC = () => {
       )}
 
       {/* Horizontal Status Bar */}
-      <div className="w-full bg-neutral-900 border-b border-arrow-deepGreen/30 sticky top-[145px] z-20 shadow-md">
+      <div className="w-full bg-neutral-900 border-b border-neutral-800 sticky top-[145px] z-20 shadow-md">
           <div className="max-w-full px-2 md:px-4 py-2 flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
               
               {/* Add Button Dropdown */}
@@ -481,7 +481,7 @@ const Dashboard: React.FC = () => {
                           onClick={() => { setActiveCategory(tab.id); setCurrentPage(1); }}
                           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all border ${
                               isActive 
-                              ? 'bg-neutral-800 border-arrow-green text-white shadow-[0_0_10px_rgba(47,191,142,0.15)]' 
+                                  ? 'bg-neutral-800 border-amber-500 text-white shadow-[0_0_10px_rgba(245,158,11,0.15)]'
                               : 'bg-transparent border-transparent text-gray-400 hover:bg-neutral-800/50 hover:text-gray-200'
                           }`}
                       >
@@ -509,7 +509,7 @@ const Dashboard: React.FC = () => {
                       placeholder="Search tracking, client, phone..." 
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      className="w-full bg-neutral-900 border border-neutral-700 text-white pl-10 pr-4 py-2.5 rounded-xl focus:border-arrow-green focus:outline-none"
+                      className="w-full bg-neutral-900 border border-neutral-700 text-white pl-10 pr-4 py-2.5 rounded-xl focus:border-amber-500 focus:outline-none"
                   />
               </div>
               
