@@ -26,7 +26,7 @@ const AppLayout: React.FC = () => {
   const { isAuthenticated } = useAuth();
 
   return (
-    <div className="bg-arrow-black min-h-screen text-arrow-light font-sans selection:bg-arrow-green selection:text-black">
+    <div className="bg-arrow-black min-h-screen text-arrow-light font-sans selection:bg-amber-500 selection:text-black">
       {isAuthenticated ? (
         <div className="flex min-h-screen">
           <Sidebar />
