@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -20,9 +20,11 @@ const AdminDashboardView: React.FC = () => {
   // but if the consumer mounted before that resolved (or state was lost), fetch
   // the profiles directly so the table/KPI never sit empty.
   const [localUsers, setLocalUsers] = useState<UserProfile[]>(users);
+  const clientFetchStarted = useRef(false);
   useEffect(() => { setLocalUsers(users); }, [users]);
   useEffect(() => {
-    if (users.length === 0) {
+    if (users.length === 0 && !clientFetchStarted.current) {
+      clientFetchStarted.current = true;
       refreshUsers().catch(() => {});
     }
   }, [users, refreshUsers]);
