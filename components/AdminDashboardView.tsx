@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { getSupplierBalance, getParcelStats, searchParcels } from '../services/zrExpressApi';
-import { ZrCredentials, ZrSupplierBalance } from '../types';
+import { ZrCredentials, ZrSupplierBalance, UserProfile } from '../types';
 import { 
     TrendingUp, Users, Map, DollarSign, ArrowRight, 
     Package, Activity, AlertCircle, Settings, Layers,
@@ -14,7 +14,18 @@ import {
 
 const AdminDashboardView: React.FC = () => {
   const navigate = useNavigate();
-  const { users, pricing, desks } = useData();
+  const { users, pricing, desks, refreshUsers } = useData();
+
+  // Self-healing client list: DataContext loads `users` once per admin session,
+  // but if the consumer mounted before that resolved (or state was lost), fetch
+  // the profiles directly so the table/KPI never sit empty.
+  const [localUsers, setLocalUsers] = useState<UserProfile[]>(users);
+  useEffect(() => { setLocalUsers(users); }, [users]);
+  useEffect(() => {
+    if (users.length === 0) {
+      refreshUsers().catch(() => {});
+    }
+  }, [users, refreshUsers]);
   const { user, resolveZrCredentials } = useAuth();
 
   // DB stats (always available)
@@ -34,6 +45,7 @@ const AdminDashboardView: React.FC = () => {
   const [todayShipped, setTodayShipped] = useState(0);
   const [todayDelivered, setTodayDelivered] = useState(0);
   const [zrLoading, setZrLoading] = useState(false);
+  const [zrError, setZrError] = useState<string | null>(null);
 
   // Fetch DB stats
   useEffect(() => {
@@ -63,45 +75,50 @@ const AdminDashboardView: React.FC = () => {
     resolveZrCredentials().then(setCreds);
   }, [resolveZrCredentials]);
 
-  useEffect(() => {
+  const loadZrData = useCallback(async () => {
     if (!creds) return;
     setZrLoading(true);
-    (async () => {
-      try {
-        const [bal, stats] = await Promise.all([
-          getSupplierBalance(creds),
-          getParcelStats(creds),
-        ]);
-        setBalance(bal);
-        setParcelStats(stats);
+    setZrError(null);
+    try {
+      const [bal, stats] = await Promise.all([
+        getSupplierBalance(creds),
+        getParcelStats(creds),
+      ]);
+      setBalance(bal);
+      setParcelStats(stats);
 
-        const [todayRes, todayDelRes] = await Promise.all([
-          searchParcels(creds, {
-            pageNumber: 1, pageSize: 1,
-            orderBy: ['createdAt desc'],
-            advancedFilter: {
-              logic: 'AND',
-              filters: [{ field: 'createdAt', operator: '>=', value: new Date().toISOString().split('T')[0] + 'T00:00:00.000Z' }],
-            },
-          }),
-          searchParcels(creds, {
-            pageNumber: 1, pageSize: 1,
-            orderBy: ['createdAt desc'],
-            advancedFilter: {
-              logic: 'AND',
-              filters: [
-                { field: 'createdAt', operator: '>=', value: new Date().toISOString().split('T')[0] + 'T00:00:00.000Z' },
-                { field: 'state.name', operator: '==', value: 'Livré' },
-              ],
-            },
-          }),
-        ]);
-        setTodayShipped(todayRes.totalCount);
-        setTodayDelivered(todayDelRes.totalCount);
-      } catch {}
-      setZrLoading(false);
-    })();
+      const [todayRes, todayDelRes] = await Promise.all([
+        searchParcels(creds, {
+          pageNumber: 1, pageSize: 1,
+          orderBy: ['createdAt desc'],
+          advancedFilter: {
+            logic: 'AND',
+            filters: [{ field: 'createdAt', operator: '>=', value: new Date().toISOString().split('T')[0] + 'T00:00:00.000Z' }],
+          },
+        }),
+        searchParcels(creds, {
+          pageNumber: 1, pageSize: 1,
+          orderBy: ['createdAt desc'],
+          advancedFilter: {
+            logic: 'AND',
+            filters: [
+              { field: 'createdAt', operator: '>=', value: new Date().toISOString().split('T')[0] + 'T00:00:00.000Z' },
+              { field: 'state.name', operator: '==', value: 'Livré' },
+            ],
+          },
+        }),
+      ]);
+      setTodayShipped(todayRes.totalCount);
+      setTodayDelivered(todayDelRes.totalCount);
+    } catch (err: any) {
+      setZrError(err?.message || 'ZR Express data unavailable — network error or invalid credentials.');
+    }
+    setZrLoading(false);
   }, [creds]);
+
+  useEffect(() => {
+    loadZrData();
+  }, [loadZrData]);
 
   const coveragePercentage = Math.round((pricing.length / 58) * 100);
   const totalStations = useMemo(() => desks.reduce((acc, curr) => acc + curr.stations.length, 0), [desks]);
@@ -168,7 +185,7 @@ const AdminDashboardView: React.FC = () => {
             )}
             <KPICard 
                 title="Registered Clients" 
-                value={users.length} 
+                value={localUsers.length} 
                 subtitle="Active" 
                 icon={Users} 
                 color="text-blue-400" 
@@ -188,6 +205,23 @@ const AdminDashboardView: React.FC = () => {
                 color="text-purple-400" 
             />
         </div>
+
+        {/* ZR data availability */}
+        {creds && zrError && (
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-amber-900/20 border border-amber-600/40 rounded-xl px-4 py-3">
+            <div className="flex items-center gap-2 text-sm text-amber-200">
+              <AlertCircle size={16} className="text-amber-400 shrink-0" />
+              <span>ZR Express data unavailable — showing local database stats instead.</span>
+            </div>
+            <button
+              onClick={loadZrData}
+              disabled={zrLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-black bg-amber-600 hover:bg-amber-500 disabled:opacity-50 transition-colors w-fit"
+            >
+              <RefreshCw size={12} className={zrLoading ? 'animate-spin' : ''} /> Retry
+            </button>
+          </div>
+        )}
 
         {/* Operational Stats Row */}
         {creds ? (
@@ -345,7 +379,7 @@ const AdminDashboardView: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
-                        {users.slice(0, 5).map((u, i) => (
+                        {localUsers.slice(0, 5).map((u, i) => (
                             <tr key={u.id || i} className="hover:bg-neutral-900/50">
                                 <td className="px-6 py-4 text-white font-medium">{u.email}</td>
                                 <td className="px-6 py-4">
@@ -365,7 +399,7 @@ const AdminDashboardView: React.FC = () => {
                                 </td>
                             </tr>
                         ))}
-                        {users.length === 0 && (
+                        {localUsers.length === 0 && (
                             <tr><td colSpan={4} className="p-8 text-center text-gray-500">No users found.</td></tr>
                         )}
                     </tbody>

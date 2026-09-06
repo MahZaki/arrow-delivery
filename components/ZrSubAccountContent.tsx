@@ -6,6 +6,7 @@ import { getMyParcels } from '../services/resellerApi';
 import { generateIndividualLabels, generateMultipleLabels, getParcelByTracking, createParcelRefund, createParcelExchange, createParcelModificationRequest } from '../services/zrExpressApi';
 
 import LoadingSpinner from './LoadingSpinner';
+import StatusBadge from './StatusBadge';
 import {
   Search, Plus, Layers,
   Printer, CheckSquare, Square, X,
@@ -171,7 +172,7 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
       {/* Header */}
       <div className="bg-amber-900/10 border-b border-amber-600/30 sticky top-[80px] z-30 backdrop-blur-md">
         <div className="max-w-full mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
             <Layers size={24} className="text-amber-400" /> My Orders
           </h1>
           <div className="flex items-center gap-4">
@@ -284,9 +285,7 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
                         {order.client_phone && <div className="text-gray-500 text-xs mt-0.5">{order.client_phone}</div>}
                       </td>
                       <td className="p-4">
-                        <span className="inline-block px-2.5 py-1 rounded-full text-xs font-medium bg-neutral-800 text-arrow-light border border-neutral-700">
-                          {order.status || '—'}
-                        </span>
+                        <StatusBadge status={order.status || 'Unknown'} />
                       </td>
                       <td className="p-4 font-mono text-amber-400 font-medium">
                         {order.cod_amount ? `${order.cod_amount.toLocaleString()} DA` : '—'}
@@ -348,13 +347,13 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
               <button
                 onClick={() => { const p = Math.max(1, currentPage - 1); setCurrentPage(p); fetchOrders(p); }}
                 disabled={currentPage === 1}
-                className="px-3 py-1 rounded bg-neutral-900 text-gray-400 hover:text-white disabled:opacity-30"
+                className="px-3 py-1 rounded bg-neutral-900 text-gray-400 hover:text-white hover:bg-neutral-800 disabled:opacity-30"
               >Prev</button>
               <span className="text-sm text-gray-500">Page {currentPage} of {totalPages}</span>
               <button
                 onClick={() => { const p = Math.min(totalPages, currentPage + 1); setCurrentPage(p); fetchOrders(p); }}
                 disabled={currentPage === totalPages}
-                className="px-3 py-1 rounded bg-neutral-900 text-gray-400 hover:text-white disabled:opacity-30"
+                className="px-3 py-1 rounded bg-neutral-900 text-gray-400 hover:text-white hover:bg-neutral-800 disabled:opacity-30"
               >Next</button>
             </div>
           )}
@@ -384,7 +383,7 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
                       <tr key={p.id} className="hover:bg-neutral-900/50">
                         {zrCredentials && <td className="p-4"><button onClick={() => toggleSelect(p.id)} className="text-gray-500 hover:text-amber-400">{selectedIds.has(p.id) ? <CheckSquare size={16} className="text-amber-400" /> : <Square size={16} />}</button></td>}
                         <td className="p-4 font-bold text-white font-mono text-xs">{p.tracking_number}</td>
-                        <td className="p-4"><span className="px-2.5 py-1 rounded-full text-xs bg-neutral-800 text-arrow-light border border-neutral-700">{p.state}</span></td>
+                        <td className="p-4"><StatusBadge status={p.state} /></td>
                         <td className="p-4 font-mono text-amber-400">{p.cod_amount.toLocaleString()} DA</td>
                         <td className="p-4 font-mono text-gray-400 text-xs">{p.zr_delivery_price.toLocaleString()} DA</td>
                         <td className="p-4 text-right text-gray-500 text-xs">{new Date(p.created_at).toLocaleDateString()}</td>

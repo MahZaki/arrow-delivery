@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useMemo, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from './AuthContext';
 import { PricingItem, DeskItem, DeskStation, UserProfile } from '../types';
 import { PRICING_DATA, DESK_DATA } from '../constants';
 
@@ -37,6 +38,8 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+
   // Initialise directly from static data — instant, no network wait
   const [pricing, setPricing] = useState<PricingItem[]>(PRICING_DATA);
   const [desks, setDesks] = useState<DeskItem[]>(DESK_DATA);
@@ -62,14 +65,49 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return result.sort((a, b) => a.wilaya.localeCompare(b.wilaya));
   };
 
+  const fetchPricingStations = async (): Promise<{ pricing: PricingItem[] | null; stations: DeskStation[] | null }> => {
+    const [pricingRes, stationsRes] = await Promise.all([
+      supabase.from('pricing').select('*').order('id', { ascending: true }),
+      supabase.from('stations').select('*').order('id', { ascending: true }),
+    ]);
+    return {
+      pricing: !pricingRes.error && pricingRes.data && pricingRes.data.length > 0 ? (pricingRes.data as PricingItem[]) : null,
+      stations: !stationsRes.error && stationsRes.data && stationsRes.data.length > 0 ? (stationsRes.data as DeskStation[]) : null,
+    };
+  };
+
   const refreshData = async () => {
-    // Pricing & desks are static — always use local data immediately.
-    // This function is kept for admin DB operations compatibility.
-    setPricing(PRICING_DATA);
-    setDesks(DESK_DATA);
-    const flat: DeskStation[] = [];
-    DESK_DATA.forEach(d => d.stations.forEach(s => flat.push(s)));
-    setFlatStations(flat);
+    const { pricing: dbPricing, stations: dbStations } = await fetchPricingStations();
+
+    // Prefer the database when it has rows; fall back to the bundled constants otherwise.
+    setPricing(dbPricing ?? PRICING_DATA);
+    if (dbStations) {
+      setFlatStations(dbStations);
+      setDesks(organizeDesks(dbStations));
+    } else {
+      setDesks(DESK_DATA);
+      const flat: DeskStation[] = [];
+      DESK_DATA.forEach(d => d.stations.forEach(s => flat.push(s)));
+      setFlatStations(flat);
+    }
+
+    // Auto-seed once on the first admin visit (requires the tables from
+    // scripts/migration_pricing_stations.sql — until then the read errors above
+    // and the constants fallback is used, matching previous behaviour).
+    if (user?.role === 'admin') {
+      let reseeded = false;
+      if (!dbPricing && (await seedPricing()).success) reseeded = true;
+      if (!dbStations && (await seedStations()).success) reseeded = true;
+      // Surface the freshly seeded rows immediately
+      if (reseeded) {
+        const after = await fetchPricingStations();
+        if (after.pricing) setPricing(after.pricing);
+        if (after.stations) {
+          setFlatStations(after.stations);
+          setDesks(organizeDesks(after.stations));
+        }
+      }
+    }
   };
 
   const refreshUsers = async () => {
@@ -82,7 +120,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     refreshData();
-  }, []);
+  }, [user?.id, user?.role]);
+
+  // Populate the admin client list whenever an admin session is active. The
+  // Command Center reads users from context; without this call it stays empty.
+  useEffect(() => {
+    if (user?.role === 'admin') refreshUsers();
+  }, [user?.id, user?.role]);
 
   // --- DB Operations ---
 
@@ -159,7 +203,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (error) {
         return { success: false, message: error.message };
       }
-      await refreshData();
       return { success: true };
     } catch (e: any) {
       return { success: false, message: e.message };
@@ -184,7 +227,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (error) {
         return { success: false, message: error.message };
       }
-      await refreshData();
       return { success: true };
     } catch (e: any) {
       return { success: false, message: e.message };

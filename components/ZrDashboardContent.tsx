@@ -338,7 +338,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
       {/* Top Header */}
       <div className="bg-amber-900/10 border-b border-amber-600/30 sticky top-[80px] z-30 backdrop-blur-md">
         <div className="max-w-full mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
             <Layers size={24} className="text-amber-400" /> ZR Express Dashboard
           </h1>
           <div className="flex items-center gap-4">
@@ -584,7 +584,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                       <td className="p-4">
                         {(() => {
                           const owner = ownerMap.get(parcel.trackingNumber);
-                          if (!owner) return <span className="text-gray-600 text-xs">—</span>;
+                          if (!owner) return <span className="text-gray-500 text-xs">—</span>;
                           return (
                             <span className={`inline-flex items-center gap-1 text-xs font-medium ${owner.role === 'admin' ? 'text-amber-400' : 'text-blue-400'}`}>
                               <User size={12} />
@@ -685,7 +685,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
                 ) : (
                   <tr>
                     <td colSpan={10} className="p-12 text-center text-gray-500">
-                      {loading ? 'Loading...' : 'No parcels found.'}
+                      {loading ? 'Loading...' : 'No parcels match your filters.'}
                     </td>
                   </tr>
                 )}
@@ -699,7 +699,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
               <button
                 onClick={() => fetchParcels(currentPage - 1)}
                 disabled={currentPage === 1}
-                className="px-3 py-1 rounded bg-neutral-900 text-gray-400 hover:text-white disabled:opacity-30"
+                className="px-3 py-1 rounded bg-neutral-900 text-gray-400 hover:text-white hover:bg-neutral-800 disabled:opacity-30"
               >
                 Prev
               </button>
@@ -707,7 +707,7 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
               <button
                 onClick={() => fetchParcels(currentPage + 1)}
                 disabled={currentPage === totalPages}
-                className="px-3 py-1 rounded bg-neutral-900 text-gray-400 hover:text-white disabled:opacity-30"
+                className="px-3 py-1 rounded bg-neutral-900 text-gray-400 hover:text-white hover:bg-neutral-800 disabled:opacity-30"
               >
                 Next
               </button>
@@ -1114,7 +1114,7 @@ const BulkImportModal: React.FC<BulkImportModalProps> = ({ credentials, onClose,
       <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-2xl w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <Upload size={18} className="text-blue-400" /> Bulk Import
+            <Upload size={18} className="text-amber-400" /> Bulk Import
           </h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={20} /></button>
         </div>
@@ -1138,11 +1138,11 @@ const BulkImportModal: React.FC<BulkImportModalProps> = ({ credentials, onClose,
           <div>
             <div className="bg-neutral-800 rounded-lg px-3 py-2 mb-4">
               <p className="text-xs text-gray-400">Detected <span className="text-white font-bold">{rows.length}</span> rows · Columns mapped: {Object.entries(columnMap).filter(([, v]) => v >= 0).length}/{Object.keys(columnMap).length}</p>
-              {!columnMap.name && <p className="text-xs text-red-400 mt-1">⚠ Name column not found</p>}
-              {!columnMap.phone && <p className="text-xs text-red-400 mt-1">⚠ Phone column not found</p>}
-              {!columnMap.wilaya && <p className="text-xs text-red-400 mt-1">⚠ Wilaya column not found</p>}
-              {!columnMap.commune && <p className="text-xs text-red-400 mt-1">⚠ Commune column not found</p>}
-              {!columnMap.amount && <p className="text-xs text-red-400 mt-1">⚠ Amount column not found</p>}
+              {!columnMap.name && <p className="text-xs text-red-400 mt-1 flex items-center gap-1"><AlertTriangle size={12} /> Name column not found</p>}
+              {!columnMap.phone && <p className="text-xs text-red-400 mt-1 flex items-center gap-1"><AlertTriangle size={12} /> Phone column not found</p>}
+              {!columnMap.wilaya && <p className="text-xs text-red-400 mt-1 flex items-center gap-1"><AlertTriangle size={12} /> Wilaya column not found</p>}
+              {!columnMap.commune && <p className="text-xs text-red-400 mt-1 flex items-center gap-1"><AlertTriangle size={12} /> Commune column not found</p>}
+              {!columnMap.amount && <p className="text-xs text-red-400 mt-1 flex items-center gap-1"><AlertTriangle size={12} /> Amount column not found</p>}
             </div>
             <div className="max-h-64 overflow-y-auto mb-4 border border-neutral-800 rounded-lg">
               <table className="w-full text-xs">
@@ -1169,7 +1169,7 @@ const BulkImportModal: React.FC<BulkImportModalProps> = ({ credentials, onClose,
               <button onClick={() => setStep('upload')} className="text-sm text-gray-400 hover:text-white">← Back</button>
               <div className="flex gap-3">
                 <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-neutral-700 transition-colors">Cancel</button>
-                <button onClick={handleImport} className="px-6 py-2 rounded-lg text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors">
+                <button onClick={handleImport} className="px-6 py-2 rounded-lg text-sm font-bold text-black bg-amber-600 hover:bg-amber-500 transition-colors">
                   Import {rows.length} Parcels
                 </button>
               </div>
@@ -1181,7 +1181,7 @@ const BulkImportModal: React.FC<BulkImportModalProps> = ({ credentials, onClose,
           <div>
             <p className="text-sm text-gray-300 mb-4">Creating parcels... ({progress}/{rows.length})</p>
             <div className="w-full bg-neutral-800 rounded-full h-3 mb-4 overflow-hidden">
-              <div className="bg-blue-500 h-full rounded-full transition-all duration-300" style={{ width: `${(progress / rows.length) * 100}%` }} />
+              <div className="bg-amber-500 h-full rounded-full transition-all duration-300" style={{ width: `${(progress / rows.length) * 100}%` }} />
             </div>
             <div className="max-h-48 overflow-y-auto">
               {results.map((r, i) => (

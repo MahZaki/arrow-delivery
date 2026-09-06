@@ -1,15 +1,19 @@
 # Arrow Delivery — Architecture Document
 
-> Last updated: July 2026
-> This document describes the current state of the application and identifies areas for improvement.
+> Last generated: September 2026
+> This document describes the current architecture of the app and, in detail, how it is routed and how data flows.
 
 ---
 
 ## 1. Overview
 
-Arrow Delivery is a logistics SaaS platform for the Algerian delivery market. It acts as a multi-carrier reseller management layer on top of **ZR Express** (primary) and **Ecotrack** (legacy). The platform enables a master reseller to create sub-accounts, manage orders, track finances, and communicate with customers via WhatsApp.
+**Arrow Delivery** is a logistics / cash-on-delivery (COD) SaaS platform for the Algerian market. It is a multi-carrier reseller management layer built on top of **ZR Express** (primary carrier) and **Ecotrack** (legacy carrier).
 
-**Core value proposition:** A single dashboard to manage all shipping operations across carriers, with a master/sub-account hierarchy for reseller businesses.
+The platform lets a **master reseller** create **sub-accounts**, then manage all shipping operations for those sub-accounts across both carriers from a single dashboard: order tracking, order creation, claims, finance/payouts, CRM, and WhatsApp marketing.
+
+**Core value proposition:** one dashboard to run every aspect of a delivery-reselling business, with a master → sub-account hierarchy, per-sub-account markup pricing, and automated financial settlement.
+
+Comments in the code base reference "phases" (Phase 2A/2B/2C/2D, Phase 3) describing the history of features — this is useful context but not an active code-level architecture.
 
 ---
 
@@ -17,17 +21,25 @@ Arrow Delivery is a logistics SaaS platform for the Algerian delivery market. It
 
 | Layer | Technology | Notes |
 |---|---|---|
-| Language | TypeScript (strict) | No runtime type checks, no validation library |
-| UI Framework | React 19 | No concurrent features used |
-| Routing | react-router-dom v7 (HashRouter) | SPA with hash-based routing |
-| Styling | Tailwind CSS 3 | Custom theme (`arrow-*` colors) |
+| Language | TypeScript (~strict) | No runtime type validation library |
+| UI framework | React 19 | No concurrent features used |
+| Routing | react-router-dom v7 (**HashRouter**) | SPA, hash-based routing |
+| Styling | Tailwind CSS 3 | Custom `arrow-*` theme colors |
 | Icons | lucide-react | |
-| Build | Vite 6 | Dev server on port 3000 |
-| Auth & DB | Supabase (PostgreSQL + Auth + RLS) | Single project |
-| Carrier API | ZR Express (`api.zrexpress.app`) | Vercel proxy rewrites |
-| Legacy API | Ecotrack (`arrow.ecotrack.dz`) | Direct calls from browser |
-| WhatsApp | WaSender API (`wasenderapi.com`) | Vercel proxy rewrite |
-| Deployment | Vercel | SPA with rewrites, no serverless functions |
+| Build tool | Vite 6 | Dev server on port `3000` |
+| Auth + DB | Supabase (PostgreSQL + Auth + RLS) | Single project |
+| Primary carrier | ZR Express (`api.zrexpress.app`) | Proxied through `/api/zr/*` |
+| Legacy carrier | Ecotrack (`arrow.ecotrack.dz`) | Called directly from the browser |
+| WhatsApp | WaSender (`wasenderapi.com`) | Proxied through `/api/wa/*` |
+| Deployment | Vercel | Static SPA + rewrite proxy, no serverless functions |
+
+### Runtime & dev dependencies
+
+```json
+dependencies:  @supabase/supabase-js, lucide-react, react, react-dom, react-router-dom
+devDependencies: @types/node, @vitejs/plugin-react, autoprefixer, postcss,
+                 tailwindcss, typescript, vite
+```
 
 ---
 
@@ -35,489 +47,402 @@ Arrow Delivery is a logistics SaaS platform for the Algerian delivery market. It
 
 ```
 arrow-delivery/
-├── index.html                    # SPA entry point
-├── package.json                  # 4 runtime deps, 6 dev deps
-├── vite.config.ts                # Vite config + ZR/WaSender proxy plugins (dev only)
-├── tailwind.config.js            # Custom theme
-├── vercel.json                   # Production proxy rewrites
-├── tsconfig.json
-│
-├── index.tsx                     # React root (HashRouter)
-├── index.css                     # Tailwind directives + scrollbar-hide utility
-├── App.tsx                       # Route definitions, providers, layout switching
-├── types.ts                      # All TypeScript interfaces (~960 lines)
-├── constants.ts                  # Static data: archived numbers, statuses, wilayas, pricing
+├── index.html                    # SPA entry point (mounts #root, loads /index.tsx)
+├── index.tsx                     # React root: creates root and renders <App/>
+├── App.tsx                       # Router, providers, and conditional layout switching
+├── types.ts                      # All TypeScript interfaces (~957 lines)
+├── constants.ts                  # Static data: archived numbers, status maps, wilayas, pricing
+├── tailwind.config.js            # Custom theme + animations
+├── vite.config.ts                # Vite config + dev-only ZR/WaSender proxy middleware
+├── vercel.json                   # Production rewrite proxy + SPA fallback
+├── .env.example / .env.local     # Env vars (Supabase URL/key, Ecotrack VITE_API_URL)
 │
 ├── lib/
-│   └── supabase.ts               # Supabase client init (10 lines)
+│   └── supabase.ts               # Supabase client singleton (init from env vars)
 │
-├── contexts/
-│   ├── AuthContext.tsx            # Auth state, login/signup, credentials, sub-accounts
-│   └── DataContext.tsx            # Pricing/desks static data, user management
+├── contexts/                     # React context providers (global state)
+│   ├── AuthContext.tsx           # Auth, session, profile, sub-accounts, credentials
+│   └── DataContext.tsx           # Pricing/desks static data + admin DB operations
 │
-├── services/
-│   ├── api.ts                    # Ecotrack API client (~470 lines)
-│   ├── zrExpressApi.ts           # ZR Express API client (~510 lines)
-│   ├── resellerApi.ts            # Supabase queries for reseller_parcels
-│   ├── transactionApi.ts         # Supabase queries for transactions
-│   ├── financialApi.ts           # Payouts, settlement
+├── services/                     # API / data-access layer
+│   ├── api.ts                    # Ecotrack client (live + archived orders, tracking)
+│   ├── zrExpressApi.ts           # ZR Express client (parcels, claims, webhooks, finance)
+│   ├── resellerApi.ts            # reseller_parcels queries + ZR→reseller sync
+│   ├── transactionApi.ts         # transactions / balance queries
+│   ├── financialApi.ts           # payouts and settlement logic
 │   ├── crmService.ts             # CRM orders CRUD + carrier sync
-│   ├── whatsappService.ts        # WaSender proxy: send message
-│   └── whatsappCampaignService.ts # Campaign CRUD + execution
+│   ├── whatsappService.ts        # WaSender message sending
+│   └── whatsappCampaignService.ts# Campaign CRUD + recipient execution
 │
-├── components/
-│   ├── Sidebar.tsx               # Authenticated navigation sidebar
-│   ├── Navbar.tsx                # Public navigation bar
-│   ├── Footer.tsx                # Minimal footer
-│   ├── ProtectedRoute.tsx        # Auth guard
+├── components/                   # Reusable UI + shared layout
+│   ├── Sidebar.tsx               # Authenticated navigation (admin-aware)
+│   ├── Navbar.tsx                # Public navigation
+│   ├── Footer.tsx                # Footer (public layout only)
+│   ├── ProtectedRoute.tsx        # Auth guard wrapper
 │   ├── LoadingSpinner.tsx        # Loading indicator
-│   ├── StatusBadge.tsx           # Color-coded status badge
-│   ├── ZrDashboardContent.tsx    # ZR Express dashboard (~1230 lines)
-│   ├── ZrSubAccountContent.tsx   # Sub-account dashboard (~530 lines)
+│   ├── StatusBadge.tsx           # Color-coded carrier status badge
+│   ├── ZrDashboardContent.tsx    # ZR master dashboard (~1230 lines)
+│   ├── ZrSubAccountContent.tsx   # ZR sub-account dashboard (~530 lines)
 │   └── AdminDashboardView.tsx    # Admin command center (~380 lines)
 │
-├── pages/
-│   ├── Home.tsx                  # Landing page
-│   ├── Dashboard.tsx             # Dashboard router (~630 lines)
-│   ├── Tracking.tsx              # Multi-carrier tracking
-│   ├── Login.tsx                 # Login page
-│   ├── Admin.tsx                 # Admin panel (users, pricing, desks, carriers)
-│   ├── AdminLogin.tsx            # Admin login
+├── pages/                        # Route-level page components
+│   ├── Home.tsx                  # Public landing page
 │   ├── Pricing.tsx               # Public pricing page
-│   ├── Finance.tsx               # Finance overview
+│   ├── Tracking.tsx              # Multi-carrier tracking page
+│   ├── Login.tsx                 # Client login
+│   ├── AdminLogin.tsx            # Admin login
+│   ├── Dashboard.tsx             # Smart dashboard router (~630 lines)
+│   ├── Admin.tsx                 # Admin panel (users, sub-accounts)
+│   ├── ArchivedImport.tsx        # Ecotrack archive import tool
+│   ├── Finance.tsx               # Finance overview (~1220 lines)
 │   ├── Balance.tsx               # Payout management
-│   ├── ZrCreateOrder.tsx         # Single order creation
-│   ├── ArchivedImport.tsx        # Ecotrack archive import
+│   ├── ZrCreateOrder.tsx         # Order creation form
 │   ├── Claims.tsx                # Claims management
-│   ├── Webhooks.tsx              # Webhook management
+│   ├── Webhooks.tsx              # Webhook configuration
 │   ├── Crm.tsx                   # CRM order management
 │   └── WhatsAppCampaigns.tsx     # WhatsApp campaign management
 │
 ├── data/
-│   └── officesData.ts            # 107 office locations (static)
+│   └── officesData.ts            # 100+ pickup-station locations (static)
 │
-└── scripts/
-    ├── migration.sql             # DB migrations (7 files)
-    └── parse_offices.py          # Office data parser
+├── scripts/                      # SQL migrations + offline tools
+│   ├── migration.sql, migration_carrier.sql, migration_crm.sql,
+│   ├── migration_crm_rls.sql, migration_financial.sql, migration_whatsapp.sql
+│   └── parse_offices.py
+│
+└── supabase/
+    ├── config.toml               # Local Supabase config
+    └── functions/wa-proxy/       # Supabase Edge Function for WhatsApp
 ```
 
 ---
 
-## 4. Routing Architecture
+## 4. Application Bootstrap
 
-### Layout switching (App.tsx)
+1. `index.html` defines `<div id="root">` and loads `index.tsx` as a module.
+2. `index.tsx` (the application entry) creates a React root and renders `<App/>` inside `<React.StrictMode>`.
+3. `App.tsx` sets up the router, the global providers, and the top-level layout.
+
+```
+index.html
+    └─ index.tsx
+         └─ <React.StrictMode>
+              └─ <App/>                     (App.tsx)
+                   ├─ <HashRouter>          (router)
+                   ├─ <AuthProvider>        (auth state)
+                   ├─ <DataProvider>        (pricing/desks/users)
+                   └─ <AppLayout/>          (layout + <Routes>)
+                        ├─ <Sidebar>  OR  <Navbar>+<Footer>
+                        └─ <Routes> → page components
+```
+
+Note: the router is `HashRouter`, configured in `App.tsx` (not `index.tsx`). All in-app navigation therefore produces hash URLs like `/#/dashboard`.
+
+---
+
+## 5. Routing Architecture
+
+### 5.1 Layout switching (App.tsx)
+
+`AppLayout` reads `isAuthenticated` from `useAuth()` and renders one of two layouts:
 
 ```
 Unauthenticated:
-  Navbar (top) → main content → Footer (bottom)
+  <Navbar> (fixed top) → <main> <Routes/> </main> → <Footer>
 
 Authenticated:
-  Sidebar (fixed left 64px) → main content (offset md:ml-64)
+  <Sidebar> (fixed left, w-64) → <main className="md:ml-64"> <Routes/> </main>
 ```
 
-### Route table
+Both layouts render the **same `<Routes>` block** — so the public routes (`/`, `/track`, `/pricing`, `/login`, `/admin/login`) are reachable whether or not the user is logged in, and the protected routes require auth through `<ProtectedRoute/>`.
+
+### 5.2 Route table
 
 | Path | Component | Auth | Notes |
 |---|---|---|---|
-| `/` | Home | No | Landing page |
-| `/track` | Tracking | No | Multi-carrier tracking |
-| `/pricing` | Pricing | No | Public pricing |
-| `/login` | Login | No | Email/password login |
-| `/admin/login` | AdminLogin | No | Separate admin login |
-| `/dashboard` | Dashboard | Yes | Smart router (see below) |
-| `/crm` | Crm | Yes | CRM order management |
-| `/zr-create-order` | ZrCreateOrder | Yes | New order form |
-| `/finance` | Finance | Yes | Finance overview |
-| `/balance` | Balance | Yes | Payout management |
-| `/archive` | ArchivedImport | Yes | Archive import tool |
-| `/claims` | Claims | Yes | Claims management |
-| `/webhooks` | Webhooks | Yes | Webhook config |
-| `/whatsapp` | WhatsAppCampaigns | Yes | Campaign management |
-| `/admin` | Admin | Yes (admin) | Admin panel |
+| `/` | `Home` | Public | Marketing landing page |
+| `/track` | `Tracking` | Public | Multi-carrier tracking; reads `?tracking=` query param |
+| `/pricing` | `Pricing` | Public | Static pricing + station lookup |
+| `/login` | `Login` | Public | Email/password login (Supabase) |
+| `/admin/login` | `AdminLogin` | Public | Admin login |
+| `/dashboard` | `Dashboard` | **Protected** | Smart router (see §5.3) |
+| `/admin` | `Admin` | **Protected** | Admin panel (role-gated at component level) |
+| `/crm` | `Crm` | Protected | CRM order management |
+| `/zr-create-order` | `ZrCreateOrder` | Protected | Create a new order |
+| `/finance` | `Finance` | Protected | Finance overview |
+| `/balance` | `Balance` | Protected | Payout management |
+| `/archive` | `ArchivedImport` | Protected | Ecotrack archive import tool |
+| `/claims` | `Claims` | Protected | Claims management (ZR) |
+| `/webhooks` | `Webhooks` | Protected | Webhook configuration (ZR) |
+| `/whatsapp` | `WhatsAppCampaigns` | Protected | WhatsApp campaigns |
 
-### Dashboard routing logic (pages/Dashboard.tsx)
+### 5.3 Protection mechanism (`ProtectedRoute.tsx`)
 
-The Dashboard page is a smart router that renders different components based on user role and carrier:
+The protected routes are nested as children of a route whose element is `<ProtectedRoute/>`:
+
+```tsx
+<Route element={<ProtectedRoute />}>
+  <Route path="/dashboard" element={<Dashboard />} />
+  ...
+</Route>
+```
+
+`ProtectedRoute`:
+1. If `isLoading` is true → shows a full-screen `LoadingSpinner` ("Verifying Access...").
+2. If authenticated → renders `<Outlet/>` (the matched child page).
+3. Otherwise → `<Navigate to="/login" replace/>`.
+
+Because the guard is purely `isAuthenticated`-based, every "protected" page can be reached by any logged-in user. Finer-grained access is enforced **inside** each page component (e.g. `Admin.tsx` returns an "Access Denied" screen when `user.role !== 'admin'`). This is a deliberate pattern in the code — the route guard handles login, and the component handles role.
+
+### 5.4 Dashboard smart routing (`pages/Dashboard.tsx`)
+
+The `/dashboard` route is the most complex page. It inspects the user's **carrier** and **role/master** to decide what to render:
 
 ```
-if (user.carrier === 'zrexpress'):
-  if (no ZR credentials):
-    if (user has master):
-      → "Contact admin" message
+if carrier === 'zrexpress':
+    if resolving master creds        → <LoadingSpinner/>
+    if no ZR credentials:
+        if user.master_id            → "Contact admin" message
+        else                         → ZR credential setup form
     else:
-      → ZR credential setup form
-  else if (user has master_id):
-    → ZrSubAccountContent (sub-account view)
-  else:
-    → ZrDashboardContent (master view)
+        if user.master_id            → <ZrSubAccountContent>   (sub-account view)
+        else                         → <ZrDashboardContent>    (master view)
 
 else (ecotrack mode):
-  if (user.role === 'admin'):
-    → AdminDashboardView
-  else:
-    → Ecotrack dashboard (inline in Dashboard.tsx)
+    if user.role === 'admin'         → <AdminDashboardView>
+    else:
+        if loading                   → <LoadingSpinner>
+        if no api_token              → "Connect Account" token form
+        else                         → inline Ecotrack dashboard (status tabs, orders table)
 ```
+
+This is the page that reconciles the three "kinds" of dashboard the app supports (ZR master, ZR sub-account, Ecotrack) behind a single `/dashboard` URL.
+
+### 5.5 Sidebar navigation (`components/Sidebar.tsx`)
+
+The authenticated sidebar groups navigation into four sections. The `Admin` item is `adminOnly` and hidden for non-admin users:
+
+```
+MAIN:      Dashboard (/dashboard), CRM (/crm), New Order (/zr-create-order), Tracking (/track)
+FINANCE:   Overview (/finance), Balance (/balance)
+SERVICE:   Archive (/archive), Claims (/claims), WhatsApp (/whatsapp)
+DEVELOPER: Webhooks (/webhooks), Admin (/admin) [adminOnly]
+```
+
+The public `Navbar.tsx` shows: Home, Pricing, Track Order, and (when logged out) Login.
 
 ---
 
-## 5. Data Model (Supabase)
+## 6. Data Layer
 
-### Tables
+### 6.1 Context providers
 
-#### `profiles`
-Extends Supabase `auth.users`. Every authenticated user has one.
+**AuthContext** (`contexts/AuthContext.tsx`) — holds the current `UserProfile`, `isAuthenticated`, `isLoading`, and derived `isMaster`. Provides:
 
-| Column | Type | Purpose |
+- `login` / `signup` / `logout` → wrap `supabase.auth`
+- `refreshProfile` → refetch the user's `profiles` row
+- `updateApiToken` (Ecotrack token), `updateZrCredentials`, `updateCarrier`, `updateUserCarrier`
+- `createSubAccount`, `updateSubAccountMarkup` (master-only)
+- `resolveZrCredentials` → returns user's own ZR creds, else inherits from `master_id`
+
+On mount it listens to `supabase.auth.getSession()` and `onAuthStateChange`, then fetches/creates the profile row.
+
+**DataContext** (`contexts/DataContext.tsx`) — provides pricing/desks/users and admin operations:
+
+- `pricing` / `desks` / `flatStations` initialized from `PRICING_DATA` / `DESK_DATA` constants for instant first paint
+- `refreshData()` reads the `pricing` and `stations` tables first and falls back to the constants when the tables are empty or unreachable; on the first admin visit it auto-seeds the tables (requires `scripts/migration_pricing_stations.sql`)
+- `users` is auto-loaded via `refreshUsers()` whenever an admin session is active
+- CRUD/seed operations on `pricing` and `stations` tables in Supabase
+
+### 6.2 Supabase client (`lib/supabase.ts`)
+
+```ts
+supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+supabaseKey = import.meta.env.VITE_SUPABASE_KEY
+export const supabase = createClient(supabaseUrl, supabaseKey)
+```
+
+Throws at import time if the env vars are missing.
+
+### 6.3 Service layer
+
+All data access is organized into service modules under `services/`. These use either Supabase (`supabase.from(...)`) or raw `fetch` against carrier APIs.
+
+| Service | Responsibility | Backend |
 |---|---|---|
-| `id` | UUID (PK, FK→auth.users) | User ID |
-| `email` | text | Email |
-| `full_name` | text | Display name |
-| `role` | text | `'admin'` or `'client'` |
-| `master_id` | UUID (FK→profiles) | Parent account (null for masters) |
-| `carrier` | text | `'ecotrack'` or `'zrexpress'` |
-| `api_token` | text | Ecotrack API token |
-| `zr_tenant_id` | text | ZR Express tenant ID |
-| `zr_api_key` | text | ZR Express API key |
-| `zr_supplier_id` | text | ZR Express supplier ID |
-| `wa_sender_api_key` | text | WaSender API key |
-| `markup_type` | text | `'flat'` or `'percentage'` |
-| `markup_value` | number | Markup for sub-accounts |
-
-#### `crm_orders`
-Central order table for CRM functionality.
-
-| Column | Type | Purpose |
-|---|---|---|
-| `id` | UUID | Order ID |
-| `profile_id` | UUID (FK→profiles) | Owner |
-| `carrier` | text | Which carrier |
-| `tracking_number` | text | Tracking number |
-| `status` | text | Current status |
-| `client_name` | text | Customer name |
-| `client_phone` | text | Customer phone |
-| `client_email` | text | Customer email |
-| `wilaya_id` | text | Wilaya code |
-| `city` | text | City |
-| `district` | text | District |
-| `street_address` | text | Street |
-| `cod_amount` | numeric | Cash on delivery amount |
-| `delivery_price` | numeric | Delivery fee |
-| `return_price` | numeric | Return fee |
-| `product_description` | text | Products |
-| `quantity` | int | Item count |
-| `weight` | numeric | Package weight |
-| `notes` | text | Notes |
-| `zr_parcel_id` | text | ZR Express parcel ID |
-| `carrier_raw` | jsonb | Full carrier response |
-| `created_at` | timestamptz | Created |
-| `updated_at` | timestamptz | Updated |
-| | UNIQUE(profile_id, tracking_number) | |
-
-#### `reseller_parcels`
-Legacy parcel tracking for reseller orders.
-
-| Column | Type | Purpose |
-|---|---|---|
-| `id` | UUID | ID |
-| `profile_id` | UUID | Owner |
-| `zr_parcel_id` | text | ZR parcel ID |
-| `tracking_number` | text | Tracking |
-| `cod_amount` | numeric | COD amount |
-| `zr_delivery_price` | numeric | Carrier delivery price |
-| `my_delivery_price` | numeric | Reseller's delivery price |
-| `zr_return_price` | numeric | Return price |
-| `state` | text | Current state |
-| `delivered_at` | timestamptz | Delivery timestamp |
-| `settled` | boolean | Whether paid out |
-| `payout_id` | UUID | Linked payout |
-
-#### `transactions`
-Financial transaction log.
-
-| Column | Type | Purpose |
-|---|---|---|
-| `id` | UUID | ID |
-| `profile_id` | UUID | Owner |
-| `type` | text | `delivery_fee`, `return_fee`, `deposit`, `withdrawal`, `adjustment`, `payout` |
-| `amount` | numeric | Amount |
-| `ref_parcel_id` | UUID | Related parcel |
-| `description` | text | Description |
-
-#### `sub_account_payouts`
-Payout requests from sub-accounts to master.
-
-| Column | Type | Purpose |
-|---|---|---|
-| `id` | UUID | ID |
-| `sub_account_id` | UUID | Requester |
-| `master_id` | UUID | Approver |
-| `amount` | numeric | Amount |
-| `status` | text | `pending`, `accepted`, `rejected` |
-| `reference` | text | Reference note |
-
-#### `payout_parcels`
-Junction: which parcels are included in a payout.
-
-#### `whatsapp_campaigns`
-Campaign definitions.
-
-| Column | Type | Purpose |
-|---|---|---|
-| `id` | UUID | ID |
-| `profile_id` | UUID | Owner |
-| `name` | text | Campaign name |
-| `message_template` | text | Template with `{placeholders}` |
-| `status` | text | `draft`, `sending`, `completed`, `cancelled` |
-| `recipient_count` | int | Total recipients |
-| `sent_count` | int | Successfully sent |
-| `failed_count` | int | Failed |
-| `carrier_filter` | text | `ecotrack`, `zrexpress`, `all` |
-| `status_filter` | text | Status filter |
-
-#### `whatsapp_recipients`
-Individual recipients per campaign.
-
-#### `pricing`
-Per-wilaya delivery pricing (loaded statically into DataContext).
-
-#### `stations` / `desks`
-Pickup station data (loaded statically into DataContext).
-
-### Row Level Security (RLS) Policies
-
-- **reseller_parcels**: Users see own data; admins see all
-- **transactions**: Users see own data; admins see all
-- **crm_orders**: Users see own + master's sub-accounts; masters see sub-accounts; admins see all
-- **sub_account_payouts**: Sub-accounts see own; admins see all
-- **payout_parcels**: Linked via payout to sub-account; admins see all
-- **whatsapp_campaigns/recipients**: Users manage own
+| `api.ts` | Live Ecotrack orders, archived orders, order registry, auto-archive, manual import, tracking. In-memory cache + retry/batching. | Ecotrack API + Supabase `orders` |
+| `zrExpressApi.ts` | Parcels, rates, labels, workflows, customers, hubs, claims, webhooks, supplier payments, bulk/refund/exchange. In-memory cache + retry. | ZR Express API (`/api/zr/*`) |
+| `resellerApi.ts` | `reseller_parcels` reads + `syncZrParcelsToReseller` paginated sync | Supabase |
+| `transactionApi.ts` | `transactions` reads and balance computation | Supabase |
+| `financialApi.ts` | Sub-account balances, payouts, settlement, payout parcel management | Supabase |
+| `crmService.ts` | `crm_orders` CRUD + Ecotrack/ZR sync into CRM | Supabase |
+| `whatsappService.ts` | Send a WhatsApp text via WaSender proxy | WaSender |
+| `whatsappCampaignService.ts` | Campaigns + recipients CRUD, template interpolation | Supabase |
 
 ---
 
-## 6. API Integration Layer
+## 7. External API Integration
 
-### ZR Express (Primary Carrier)
+Three external services are integrated:
 
-**All requests go through Vercel proxy rewrites**, which inject `X-Api-Key` and `X-Tenant` headers.
+### 7.1 ZR Express (primary carrier, `api.zrexpress.app`)
+
+All calls go through a relative proxy base `/api/zr` so the browser never hits the carrier directly (avoids CORS and hides credentials):
 
 ```
-Client → /api/zr/* → Vercel Rewrite → https://api.zrexpress.app/api/v1.0/*
+Client → /api/zr/<path> → (proxy) → https://api.zrexpress.app/api/v1.0/<path>
 ```
 
-- **Dev mode:** Vite proxy plugin handles this (vite.config.ts)
-- **Production:** Vercel rewrites (vercel.json)
+- **Dev:** `vite.config.ts` registers a `zr-proxy` Connect middleware that forward-proxies requests starting with `/api/zr/` and forwards the `X-Tenant` / `X-Api-Key` headers from the client.
+- **Prod:** `vercel.json` declares a rewrite `"/api/zr/(.*)" → "https://api.zrexpress.app/api/v1.0/$1"`.
 
-The ZR API client (`services/zrExpressApi.ts`, ~510 lines) provides:
-- Parcel CRUD (search, create, update amount/customer, bulk delete)
-- Label generation (individual + batch)
-- Refund, exchange, modification requests
-- Territory/rate lookups
-- Supplier balance & stats
-- Claims management
-- Webhook registration
-- In-memory caching with 5-minute TTL
+The client library (`zrExpressApi.ts`) attaches `X-Tenant` and `X-Api-Key` headers from the resolved credentials on every request.
 
-### Ecotrack (Legacy Carrier)
+### 7.2 Ecotrack (legacy carrier, `arrow.ecotrack.dz`)
 
-**Direct browser calls** to `https://arrow.ecotrack.dz` (configured via `VITE_API_URL`).
+Called **directly** from the browser using `VITE_API_URL` (from `constants.ts`) — no proxy. Requests carry an `api_token` query parameter. Key endpoints consume: `/api/v1/get/orders`, `/api/v1/get/orders/status`, `/api/v1/get/tracking/info`.
 
-The Ecotrack client (`services/api.ts`, ~470 lines) provides:
-- Order fetching (active + archived from DB)
-- Tracking
-- Auto-archiving of disappeared orders
-- In-memory caching
+The Ecotrack client (`api.ts`) adds retry logic, 5-minute in-memory caching, batched pagination, and an auto-archive workflow (see §8).
 
-### WaSender (WhatsApp)
+### 7.3 WaSender (WhatsApp, `wasenderapi.com`)
 
-**Vercel proxy rewrite:**
+Prototypical WhatsApp integration:
+
 ```
-Client → /api/wa/send-message → https://www.wasenderapi.com/api/send-message
+Client → /api/wa/send-message → (rewrite) → https://www.wasenderapi.com/api/send-message
 ```
 
-Simple proxy — no header injection needed (API key sent in request body).
+Also available as a Supabase Edge Function at `supabase/functions/wa-proxy/index.ts`, which authenticates the caller with `supabase.auth.getUser()` and forwards the request to WaSender with `Authorization: Bearer <apiKey>`.
 
 ---
 
-## 7. Authentication & Authorization
+## 8. Order Lifecycle & Eco-track Archival Flow
 
-### Auth Flow
+The ordering/archiving logic is one of the more subtle parts of the app (in `services/api.ts`):
 
-1. User logs in via Supabase Auth (email/password)
-2. `AuthContext` fetches the user's `profiles` row
-3. If no profile exists, one is auto-created with defaults (`role: 'client'`, `carrier: 'ecotrack'`)
-4. Profile data is stored in React state (`AuthContext.user`)
+1. `fetchOrdersFromApi` pulls **active** orders from Ecotrack (paginated).
+2. `fetchArchivedFromDb` pulls previously-archived orders from the Supabase `orders` table.
+3. Live orders take priority; archived orders fill in only where the tracking number is not live.
+4. After each fetch, `autoArchiveDisappeared` runs in the background:
+   - `updateOrderRegistry` upserts the current live tracking numbers into `order_registry`.
+   - `detectDisappearedOrders` finds registry entries no longer present in the live API (= the carrier archived them).
+   - Those disappearances are fetched via the filter API and written to `orders` (archive), then removed from the registry.
+5. `importArchivedOrders` allows a user to manually import orders by pasting tracking numbers (via `/archive`).
 
-### Role Hierarchy
+This means the Supabase `orders` table acts as the **archive**, while the carrier API is the **source of active** orders, and `order_registry` bridges the two to detect archival.
+
+---
+
+## 9. Authentication & Authorization
+
+### 9.1 Flow
+
+1. User logs in via Supabase Auth (email/password).
+2. `AuthContext` fetches the `profiles` row for `session.user.id`.
+3. If missing, a default profile is created (`role: 'client'`, `carrier: 'ecotrack'`).
+4. The profile is stored in React state and drives both `isAuthenticated` and routing.
+
+### 9.2 Role hierarchy
 
 ```
-Admin (role='admin', no master_id)
-  └── Master Reseller (role='admin', no master_id)
-       └── Sub-Account (role='client', master_id=master.id)
+Admin (role='admin', master_id=null)          ← full platform admin
+  └─ Master Reseller (role='admin', master_id=null)  ← creates sub-accounts
+       └─ Sub-Account (role='client', master_id=<master>)
 ```
 
-**Key distinction:**
-- `role='admin'` + no `master_id` → Master/Admin
-- `role='admin'` + has `master_id` → Sub-account with admin privileges
-- `role='client'` → Regular sub-account
+- `role='admin'` **and no** `master_id` → administrator-level access.
+- `role='client'` → standard account, possibly linked to a master.
+- `isMaster` is `role === 'admin' && !master_id`.
 
-### Credential Resolution
+### 9.3 Credential resolution (ZR)
 
-ZR credentials are resolved with inheritance:
-1. Check user's own `zr_tenant_id` / `zr_api_key`
-2. If null and user has `master_id`, fetch master's credentials
-3. If still null, show setup form
-
----
-
-## 8. Component Architecture
-
-### Component Size Distribution
-
-| Component | Lines | Responsibility |
-|---|---|---|
-| `ZrDashboardContent.tsx` | ~1230 | **Everything** ZR: stats, table, CRUD, bulk, import, modals |
-| `Dashboard.tsx` | ~630 | Ecotrack dashboard + smart routing |
-| `Admin.tsx` | ~600 | Admin panel with tabs |
-| `Tracking.tsx` | ~600 | Multi-carrier tracking page |
-| `ZrSubAccountContent.tsx` | ~530 | Sub-account dashboard |
-| `Home.tsx` | ~420 | Landing page |
-| `AdminDashboardView.tsx` | ~380 | Admin command center |
-| `Crm.tsx` | ~400 | CRM page |
-| `WhatsAppCampaigns.tsx` | ~400 | Campaign management |
-| `ZrCreateOrder.tsx` | ~350 | Order creation form |
-| `Balance.tsx` | ~350 | Payout management |
-| `Finance.tsx` | ~300 | Finance overview |
-| `Login.tsx` | ~200 | Login page |
-| `Sidebar.tsx` | ~180 | Navigation |
-
-### State Management
-
-**No global state library.** Everything is either:
-1. **React Context** (AuthContext, DataContext) — for auth and static data
-2. **Component-local `useState`** — for all UI state, API data, loading states
-
-`ZrDashboardContent.tsx` alone has **~40 `useState` hooks** managing:
-- Parcel list, loading, error, pagination
-- Search, date filters, sub-account filter
-- Selected items (bulk actions)
-- Modals (refund, exchange, modify, edit, bulk import)
-- Treasury balance, stats
-- Owner map (sub-account ownership)
-
-### Data Fetching
-
-**No data fetching library** (no React Query, no SWR). All fetching is done with:
-- `useEffect` + `useState` for initial loads
-- Manual `async` functions called from event handlers
-- In-memory caching in service files (`zrExpressApi.ts`, `api.ts`)
+`resolveZrCredentials`:
+1. Use the user's own `zr_tenant_id` / `zr_api_key` if present.
+2. Otherwise, if the user has a `master_id`, fetch the master's ZR credentials.
+3. Otherwise return `null` → the dashboard shows a setup form / contact-admin message.
 
 ---
 
-## 9. Key Pain Points & Technical Debt
+## 10. Data Model (Supabase tables)
 
-### Critical Issues
+### `profiles`
+Extends `auth.users`; one row per user.
 
-1. **Monolithic components.** `ZrDashboardContent.tsx` (1230 lines) and `Dashboard.tsx` (630 lines) contain all logic in single files. No separation of concerns.
+`id` (PK), `email`, `full_name`, `role` (`admin`|`client`), `master_id` (nullable FK → profiles), `carrier` (`ecotrack`|`zrexpress`), `api_token` (Ecotrack), `zr_tenant_id`, `zr_api_key`, `wa_sender_api_key`, `markup_type` (`flat`|`percentage`), `markup_value`.
 
-2. **No data fetching abstraction.** Every component manually manages loading/error/data states with `useState`. No caching, no deduplication, no background refetching.
+### `orders`
+Ecotrack **archive** store. Written by `saveToArchive` / `importArchivedOrders`; upserted on `tracking` conflict. Columns include `tracking`, `user_id`, `client`, `status`, `wilaya_id`, `montant`, `tarif_prestation`, `tarif_retour`, `product`, `phone`, `archived_at`, `updated_at`.
 
-3. **Inline modal management.** Modals (refund, exchange, modify, edit, bulk import) are all state-driven within the same component, not composable.
+### `order_registry`
+Tracks which tracking numbers were last seen as "live" (to detect archival). Columns: `tracking`, `user_id`, `status`, `last_seen_at`.
 
-4. **Duplicate code.** `api.ts` and `zrExpressApi.ts` share identical caching logic (`getCached`, `setCache`, `wait`). Status badge logic is duplicated across components.
+### `crm_orders`
+Central CRM order table. `UNIQUE(profile_id, tracking_number)`; `carrier_raw` holds the full carrier response (jsonb).
 
-5. **No validation.** No Zod, no Yup, no form validation library. All validation is ad-hoc `if (!field)` checks.
+### `reseller_parcels`
+Legacy per-parcel record for a reseller/profile. Tracks COD amount, the reseller's delivery price vs. ZR's, return price, state, `delivered_at`, `settled`, `payout_id`.
 
-6. **Security: API keys in localStorage.** Ecotrack `api_token` is stored in both Supabase and localStorage. ZR credentials are in Supabase only.
+### `transactions`
+Financial ledger. Types: `delivery_fee`, `return_fee`, `deposit`, `withdrawal`, `adjustment`, `payout`.
 
-### Moderate Issues
+### `sub_account_payouts` & `payout_parcels`
+Payout requests (pending/accepted/rejected) and the junction of parcels included in each payout.
 
-7. **`types.ts` is a monolith.** 957 lines of interfaces in one file. ZR types, user types, financial types, CRM types all mixed.
+### `whatsapp_campaigns` & `whatsapp_recipients`
+Campaign definitions (name, template, filters, status, counts) and per-recipient send records.
 
-8. **No error boundary.** Any runtime error crashes the entire app.
+### `pricing`, `stations`
+Wilaya pricing and pickup-station records (loaded statically into `DataContext`).
 
-9. **No tests.** No test files, no test framework configured.
-
-10. **No linting.** No ESLint/Prettier configured (no `npm run lint` script).
-
-11. **Mixed data sources.** Pricing and desks are loaded from static constants (`PRICING_DATA`, `DESK_DATA`) but the DataContext also has DB CRUD operations that never actually persist to the displayed data (the `refreshData` function resets to static constants).
-
-12. **Hardcoded magic strings.** Status strings (`'livre_non_encaisse'`, `'prete_a_expedier'`) are scattered throughout components, not centralized.
-
-13. **No loading skeletons.** Only spinner-based loading states.
-
-14. **No optimistic updates.** All mutations wait for server response before updating UI.
-
-15. **HashRouter instead of BrowserRouter.** URLs have `#` prefix. Not ideal for SEO or sharing.
-
-### Minor Issues
-
-16. **Unused Gemini API key** in vite.config.ts `define` block.
-17. **No favicon/icon optimization.** External imgur URL for logo.
-18. **Font stack inconsistent.** Tailwind config uses `Segoe UI` but index.html loads Google Fonts (Poppins, Outfit) that are unused.
-19. **Navbar shown for authenticated users on non-dashboard pages** — UX inconsistency.
+RLS policies are scoped per table so users see their own data, masters see their sub-accounts, and admins see everything.
 
 ---
 
-## 10. Database Migration History
+## 11. State Management & Data Fetching
 
-The project has evolved through 7 SQL migrations:
-
-1. `migration.sql` — Core reseller system (reseller_parcels, transactions, profile enhancements)
-2. `migration_crm.sql` — CRM orders table
-3. `migration_financial.sql` — Payouts and settlement tracking
-4. `migration_whatsapp.sql` — WhatsApp campaign infrastructure
-5. `migration_crm_rls.sql` — Updated CRM RLS for master/sub-account cross-visibility
-6. `migration_carrier.sql` — Carrier field on profiles
-7. Various profile field additions (ZR credentials, markup, WaSender key)
+- **No global state library** (no Redux/Zustand), **no data-fetching library** (no React Query/SWR).
+- Global state is limited to the two contexts (`AuthContext`, `DataContext`).
+- All page/component state uses local `useState`/`useEffect`.
+- API data is fetched imperatively (`useEffect` on mount + handlers) and cached in-memory (5-minute TTL) inside the service modules (`api.ts`, `zrExpressApi.ts`).
 
 ---
 
-## 11. Deployment Architecture
+## 12. Deployment Architecture
 
 ```
-GitHub (main branch)
-    ↓ push
-Vercel (auto-deploy)
-    ↓ build
-Static SPA (dist/)
-    ↓ serve
-Vercel Edge Network
-    ├── /api/zr/* → https://api.zrexpress.app/api/v1.0/* (rewrite)
-    ├── /api/wa/send-message → https://wasenderapi.com/api/send-message (rewrite)
-    ├── /* → /index.html (SPA fallback)
-    └── /index.html (static assets)
+GitHub (main)
+    └─ push → Vercel auto-deploy
+        └─ build (vite build → dist/)
+            └─ serve static SPA on Vercel Edge Network
+                 ├─ /api/zr/*            → https://api.zrexpress.app/api/v1.0/*   (rewrite)
+                 ├─ /api/wa/send-message → https://wasenderapi.com/api/send-message (rewrite)
+                 └─ /*                   → /index.html                            (SPA fallback)
 ```
 
-No serverless functions. All business logic runs client-side. The Vercel rewrites are purely for CORS proxying.
+There are **no serverless functions** for the app itself; the `vercel.json` rewrites exist purely for CORS proxying to the carrier APIs. The only serverless artifact is the opt-in Supabase Edge Function for WhatsApp.
+
+**Environment variables (`.env.local`):**
+- `VITE_SUPABASE_URL`, `VITE_SUPABASE_KEY` (from `lib/supabase.ts`)
+- `VITE_API_URL` (Ecotrack base URL, from `constants.ts`)
+- `VITE_TENANT_ID` / `VITE_ZR_API_KEY` (dev) and `GEMINI_API_KEY` (injected into build via `vite.config.ts` `define` — appears unused by the app)
 
 ---
 
-## 12. Planned Improvements
+## 13. Key Architectural Patterns & Observations
 
-### Phase 1: Architecture Cleanup
-- [ ] Split `ZrDashboardContent.tsx` into sub-components (StatsBar, ParcelTable, Modals, BulkImport)
-- [ ] Extract shared utilities (caching, status mapping, phone formatting)
-- [ ] Organize `types.ts` into domain-specific files (`types/zr.ts`, `types/user.ts`, etc.)
-- [ ] Add ESLint + Prettier configuration
-- [ ] Add React Query (TanStack Query) for data fetching
+- **Route guard vs. role guard are separate concerns.** `ProtectedRoute` only checks login; individual pages (notably `Admin.tsx`) enforce role restrictions themselves.
+- **Single smart `/dashboard`.** Carrier + master/sub-account logic is centralized in `Dashboard.tsx`, dispatching to different content components.
+- **Proxied third-party APIs** keep CORS and credentials out of the browser except for Ecotrack, which is hit directly with a token query param.
+- **Archive via registry diffing.** Sub-systems detect carrier-side archival by comparing `order_registry` (what we last saw) with the live API list.
+- **Some code is intentionally duplicated** (caching utilities, status mappings) rather than shared — worth consolidating.
+- **No test framework, no lint config, no error boundary** currently configured.
 
-### Phase 2: Code Quality
-- [ ] Add Zod schemas for API request/response validation
-- [ ] Add Error Boundaries around route-level components
-- [ ] Centralize status string constants
-- [ ] Remove unused Gemini API key config
-- [ ] Fix font loading (actually use Poppins/Outfit or remove them)
+---
 
-### Phase 3: UX Improvements
-- [ ] Loading skeletons instead of spinners
-- [ ] Optimistic updates for mutations
-- [ ] Toast notifications for success/error feedback
-- [ ] Proper form validation with error messages
-- [ ] Responsive table improvements (card view on mobile)
+## 14. Note on Fast-Reference Router
 
-### Phase 4: Features
-- [ ] Real-time updates via Supabase Realtime subscriptions
-- [ ] Batch operations with progress tracking
-- [ ] Advanced analytics / reporting
-- [ ] Multi-language support (FR/AR)
-- [ ] Push notifications for order status changes
+Core routing entry point: `App.tsx`
+- `App.tsx:2` — `HashRouter`
+- `App.tsx:40-51` — protected routes nested under `<ProtectedRoute/>`
+- `App.tsx:50` — `/admin` (protected, role-checked inside `Admin.tsx`)
+- `pages/Dashboard.tsx:275-329` — carrier/role dispatch
