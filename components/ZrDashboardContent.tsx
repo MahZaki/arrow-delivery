@@ -11,6 +11,7 @@ import {
 import { getAllResellerParcelsForMaster } from '../services/resellerApi';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from './LoadingSpinner';
+import { openBulkPrint } from '../lib/bulkPrint';
 import {
   RefreshCw, Search,
   Plus, ChevronDown, Calendar, Layers, List,
@@ -215,6 +216,32 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
       setError('Bulk label print failed: ' + (err?.message || 'unknown error'));
     }
     setBulkActionLoading(false);
+  };
+
+  const handleBulkPrintList = () => {
+    const selected = filteredParcels.filter(p => selectedIds.has(p.id));
+    if (selected.length === 0) return;
+    openBulkPrint({
+      title: 'Bulk Parcel List',
+      columns: [
+        { key: 'tracking', label: 'Tracking' },
+        { key: 'customer', label: 'Customer' },
+        { key: 'phone', label: 'Phone' },
+        { key: 'city', label: 'City' },
+        { key: 'amount', label: 'COD Amount' },
+        { key: 'state', label: 'State' },
+        { key: 'date', label: 'Created' },
+      ],
+      rows: selected.map(p => ({
+        tracking: p.trackingNumber,
+        customer: p.customer?.name,
+        phone: p.customer?.phone?.number1,
+        city: p.deliveryAddress?.city,
+        amount: `${Number(p.amount).toLocaleString()} DA`,
+        state: p.state?.name,
+        date: new Date(p.createdAt).toLocaleDateString(),
+      })),
+    });
   };
 
   const handleBulkDelete = async () => {
@@ -505,6 +532,13 @@ const ZrDashboardContent: React.FC<ZrDashboardContentProps> = ({ credentials }) 
               >
                 <Printer size={14} />
                 {bulkActionLoading ? 'Processing...' : 'Print Labels'}
+              </button>
+              <button
+                onClick={handleBulkPrintList}
+                disabled={bulkActionLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-30"
+              >
+                <FileText size={14} /> Print List
               </button>
               <button
                 onClick={() => setShowDeleteConfirm(true)}

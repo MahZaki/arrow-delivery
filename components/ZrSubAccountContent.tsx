@@ -7,10 +7,11 @@ import { generateIndividualLabels, generateMultipleLabels, getParcelByTracking, 
 
 import LoadingSpinner from './LoadingSpinner';
 import StatusBadge from './StatusBadge';
+import { openBulkPrint } from '../lib/bulkPrint';
 import {
   Search, Plus, Layers,
   Printer, CheckSquare, Square, X,
-  RotateCcw, ArrowLeftRight, FileEdit, Loader2,
+  RotateCcw, ArrowLeftRight, FileEdit, Loader2, FileText,
   Package, Truck, CheckCircle, DollarSign, Clock, Filter
 } from 'lucide-react';
 
@@ -150,6 +151,28 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
     setBulkActionLoading(false);
   };
 
+  const handleBulkPrintList = () => {
+    const selected = currentLegacyParcels.filter(p => selectedIds.has(p.id));
+    if (selected.length === 0) return;
+    openBulkPrint({
+      title: 'Bulk Order List',
+      columns: [
+        { key: 'tracking', label: 'Tracking' },
+        { key: 'state', label: 'State' },
+        { key: 'cod', label: 'COD Amount' },
+        { key: 'delivery', label: 'Delivery (ZR)' },
+        { key: 'date', label: 'Date' },
+      ],
+      rows: selected.map(p => ({
+        tracking: p.tracking_number,
+        state: p.state,
+        cod: `${Number(p.cod_amount).toLocaleString()} DA`,
+        delivery: `${Number(p.zr_delivery_price).toLocaleString()} DA`,
+        date: new Date(p.created_at).toLocaleDateString(),
+      })),
+    });
+  };
+
   const todayOrders = orders.filter(o => {
     const d = new Date(o.created_at);
     return d.toDateString() === new Date().toDateString();
@@ -251,9 +274,14 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
               <span className="text-sm text-amber-200 font-medium">{selectedIds.size} selected (legacy)</span>
               <button onClick={clearSelection} className="text-xs text-gray-500 hover:text-white transition-colors flex items-center gap-1"><X size={14} /> Clear</button>
             </div>
-            <button onClick={handleBulkPrintLabels} disabled={bulkActionLoading} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-black rounded-lg text-xs font-bold transition-colors disabled:opacity-30">
-              <Printer size={14} /> {bulkActionLoading ? 'Processing...' : 'Print Labels'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={handleBulkPrintLabels} disabled={bulkActionLoading} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-black rounded-lg text-xs font-bold transition-colors disabled:opacity-30">
+                <Printer size={14} /> {bulkActionLoading ? 'Processing...' : 'Print Labels'}
+              </button>
+              <button onClick={handleBulkPrintList} disabled={bulkActionLoading} className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-30">
+                <FileText size={14} /> Print List
+              </button>
+            </div>
           </div>
         )}
 
