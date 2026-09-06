@@ -36,6 +36,7 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
   const [legacyParcels, setLegacyParcels] = useState<ResellerParcel[]>([]);
   const [labelLoading, setLabelLoading] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [actionModal, setActionModal] = useState<'refund' | 'exchange' | 'modify' | null>(null);
   const [actionParcel, setActionParcel] = useState<ZrParcel | null>(null);
@@ -135,6 +136,19 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
   };
   const clearSelection = () => setSelectedIds(new Set());
 
+  // Main orders table selection (CRM orders)
+  const allOrdersSelected = orders.length > 0 && orders.every(o => selectedOrderIds.has(o.id));
+  const toggleSelectOrder = (id: string) => {
+    const next = new Set(selectedOrderIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedOrderIds(next);
+  };
+  const toggleSelectAllOrders = () => {
+    if (allOrdersSelected) setSelectedOrderIds(new Set());
+    else setSelectedOrderIds(new Set(orders.map(o => o.id)));
+  };
+  const clearSelectedOrders = () => setSelectedOrderIds(new Set());
+
   const handleBulkPrintLabels = async () => {
     if (!zrCredentials) return;
     const selected = currentLegacyParcels.filter(p => selectedIds.has(p.id));
@@ -169,6 +183,34 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
         cod: `${Number(p.cod_amount).toLocaleString()} DA`,
         delivery: `${Number(p.zr_delivery_price).toLocaleString()} DA`,
         date: new Date(p.created_at).toLocaleDateString(),
+      })),
+    });
+  };
+
+  const handleBulkPrintOrders = () => {
+    const selected = orders.filter(o => selectedOrderIds.has(o.id));
+    if (selected.length === 0) return;
+    openBulkPrint({
+      title: 'Bulk Order List',
+      columns: [
+        { key: 'tracking', label: 'Tracking' },
+        { key: 'client', label: 'Client' },
+        { key: 'phone', label: 'Phone' },
+        { key: 'status', label: 'Status' },
+        { key: 'cod', label: 'COD Amount' },
+        { key: 'delivery', label: 'Delivery (ZR)' },
+        { key: 'product', label: 'Product' },
+        { key: 'date', label: 'Date' },
+      ],
+      rows: selected.map(o => ({
+        tracking: o.tracking_number,
+        client: o.client_name || '',
+        phone: o.client_phone || '',
+        status: o.status || '',
+        cod: o.cod_amount ? `${Number(o.cod_amount).toLocaleString()} DA` : '',
+        delivery: o.delivery_price ? `${Number(o.delivery_price).toLocaleString()} DA` : '',
+        product: o.product_description || '',
+        date: new Date(o.created_at).toLocaleDateString(),
       })),
     });
   };
@@ -285,12 +327,29 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
           </div>
         )}
 
+        {/* Bulk Action Bar (main orders) */}
+        {selectedOrderIds.size > 0 && (
+          <div className="flex items-center justify-between bg-amber-900/20 border border-amber-600/30 rounded-xl px-4 py-3 mb-4">
+            <div className="flex items-center gap-3">
+              <CheckSquare size={18} className="text-amber-400" />
+              <span className="text-sm text-amber-200 font-medium">{selectedOrderIds.size} selected</span>
+              <button onClick={clearSelectedOrders} className="text-xs text-gray-500 hover:text-white transition-colors flex items-center gap-1"><X size={14} /> Clear</button>
+            </div>
+            <button onClick={handleBulkPrintOrders} disabled={bulkActionLoading} className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-30">
+              <FileText size={14} /> Print List
+            </button>
+          </div>
+        )}
+
         {/* Orders Table (CRM) */}
         <div className="bg-arrow-dark border border-neutral-800 rounded-2xl overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-neutral-950 text-gray-400 text-xs uppercase tracking-wider border-b border-neutral-800">
+                  <th className="p-4 w-10">
+                    <input type="checkbox" checked={allOrdersSelected} onChange={toggleSelectAllOrders} className="accent-amber-500" />
+                  </th>
                   <th className="p-4 font-semibold">Tracking</th>
                   <th className="p-4 font-semibold">Client</th>
                   <th className="p-4 font-semibold">Status</th>
@@ -304,7 +363,10 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
               <tbody className="divide-y divide-neutral-800 text-sm">
                 {orders.length > 0 ? (
                   orders.map(order => (
-                    <tr key={order.id} className="hover:bg-neutral-900/50 transition-colors group">
+                    <tr key={order.id} className={`hover:bg-neutral-900/50 transition-colors group ${selectedOrderIds.has(order.id) ? 'bg-amber-900/10' : ''}`}>
+                      <td className="p-4">
+                        <input type="checkbox" checked={selectedOrderIds.has(order.id)} onChange={() => toggleSelectOrder(order.id)} className="accent-amber-500" />
+                      </td>
                       <td className="p-4">
                         <div className="font-bold text-white font-mono text-xs">{order.tracking_number}</div>
                       </td>
@@ -360,7 +422,7 @@ const ZrSubAccountContent: React.FC<ZrSubAccountContentProps> = ({ profileId, ma
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={8} className="p-12 text-center text-gray-500">
+                    <td colSpan={9} className="p-12 text-center text-gray-500">
                       {loading ? 'Loading...' : 'No orders found. Ask your master account to sync orders from ZR Express.'}
                     </td>
                   </tr>
